@@ -25,16 +25,30 @@ public class PendingRequest {
     private String error;
     private final String branch;
 
-    public PendingRequest(String requestId, List<Action> actions, String branch) {
+    public PendingRequest(final String requestId, final List<Action> actions, final String branch) {
         this(requestId, actions, 0, Status.RUNNING, null, branch);
     }
 
-    private PendingRequest(String requestId, List<Action> actions, int index, Status status, String error, String branch) {
+    private PendingRequest(final String requestId, final List<Action> actions, final int index, final Status status,
+            final String error,
+            final String branch) {
         this.requestId = requestId;
         this.actions = new ArrayList<>(actions);
         this.total = actions.size();
         this.index = index;
         this.status = status;
+        this.error = error;
+        this.branch = branch;
+    }
+
+    private PendingRequest(final String requestId, final List<Action> actions, final int index, final String status,
+            final String error,
+            final String branch) {
+        this.requestId = requestId;
+        this.actions = new ArrayList<>(actions);
+        this.total = actions.size();
+        this.index = index;
+        this.status = error.isEmpty() ? Status.valueOf(status) : Status.valueOf(status);
         this.error = error;
         this.branch = branch;
     }
@@ -84,23 +98,23 @@ public class PendingRequest {
         status = Status.COMPLETED;
     }
 
-    public void failed(String message) {
+    public void failed(final String message) {
         status = Status.FAILED;
         error = message;
     }
 
-    public void interrupted(String message) {
+    public void interrupted(final String message) {
         status = Status.INTERRUPTED;
         error = message;
     }
 
     public JSONObject toJson() {
-        JSONObject json = new JSONObject();
+        final JSONObject json = new JSONObject();
         json.put("requestId", requestId);
         json.put("branch", branch == null ? "" : branch);
-        JSONArray array = new JSONArray();
-        for (Action action : actions) {
-            JSONObject a = new JSONObject();
+        final JSONArray array = new JSONArray();
+        for (final Action action : actions) {
+            final JSONObject a = new JSONObject();
             a.put("type", action.type().name());
             a.put("argument", action.argument() == null ? "" : action.argument());
             array.put(a);
@@ -112,21 +126,25 @@ public class PendingRequest {
         return json;
     }
 
-    public static PendingRequest fromJson(JSONObject json) {
-        String requestId = json.getString("requestId");
-        String branch = json.optString("branch", "");
-        JSONArray array = json.getJSONArray("actions");
-        List<Action> actions = new ArrayList<>();
+    public static PendingRequest fromJson(final String json) {
+        return fromJson(new JSONObject(json));
+    }
+
+    public static PendingRequest fromJson(final JSONObject json) {
+        final JSONArray array = json.getJSONArray("actions");
+        final List<Action> actions = new ArrayList<>();
         for (int i = 0; i < array.length(); i++) {
-            JSONObject a = array.getJSONObject(i);
-            String type = a.getString("type");
-            String argument = a.optString("argument", "");
-            actions.add(new Action(ActionType.valueOf(type), argument.isEmpty() ? null : argument));
+            final JSONObject obj = array.getJSONObject(i);
+            final String args = obj.optString("argument", null);
+            actions.add(new Action(ActionType.valueOf(obj.getString("type")), args != null && args.isEmpty() ? null : args));
         }
-        int index = json.optInt("index", 0);
-        String status = json.optString("status", Status.RUNNING.name());
-        String error = json.optString("error", "");
-        return new PendingRequest(requestId, actions, index,
-                error.isEmpty() ? Status.valueOf(status) : Status.valueOf(status), error, branch);
+
+        return new PendingRequest(
+                json.getString("requestId"),
+                actions,
+                json.optInt("index", 0),
+                json.optString("status", Status.RUNNING.name()),
+                json.optString("error", ""),
+                json.optString("branch", ""));
     }
 }
