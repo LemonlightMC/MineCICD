@@ -56,9 +56,6 @@ tasks.shadowJar {
     archiveClassifier.set("")
     mergeServiceFiles()
     exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
-    manifest {
-        attributes["Main-Class"] = "com.lemonlightmc.minecicd.secrets.ReplaceFilter"
-    }
 }
 
 tasks.jar {

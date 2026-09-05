@@ -54,7 +54,9 @@ public class SecretManager {
     public static record SecretFileEntry(String file, String driverName) {
 
         public SecretFileEntry(final String file) {
-            this(file.replace('\\', '/'), SecretManager.driverNameFor(file));
+            // Hash the normalized path so the driver name is stable regardless
+            // of whether secrets.yml uses '/' or '\' separators.
+            this(file.replace('\\', '/'), SecretManager.driverNameFor(file.replace('\\', '/')));
 
         }
 
@@ -114,7 +116,10 @@ public class SecretManager {
 
                 }
             }
-            files.removeIf(entry -> files.contains(entry));
+            // Drop duplicate file entries, keeping the first occurrence. Each
+            // file gets exactly one filter driver section.
+            final Set<String> seen = new HashSet<>();
+            files.removeIf(entry -> !seen.add(entry.file()));
         }
 
         // Write .gitattributes routing each configured file to its own per-file
@@ -154,7 +159,7 @@ public class SecretManager {
             }
 
             // append filters
-            out.append(buildAttributesBlock(out));
+            out.append(buildAttributesBlock(out, files));
             Files.write(attributes, out.toString().getBytes(StandardCharsets.UTF_8));
         } catch (final IOException e) {
             plugin.getLogger().warning("Unable to write .gitattributes: " + e.getMessage());
@@ -167,14 +172,17 @@ public class SecretManager {
      * wrapped in the markers that {@code writeAttributes} uses to replace the
      * block on the next write.
      */
-    String buildAttributesBlock(final StringBuilder buidler) {
-        buidler.append(FILTERS_BEGIN).append(LINE_SEP);
-        for (final SecretFileEntry entry : files) {
-            buidler.append(escapeAttr(entry.file())).append(" filter=").append(entry.driverName())
+    static String buildAttributesBlock(final StringBuilder builder, final List<SecretFileEntry> entries) {
+        builder.append(FILTERS_BEGIN).append(LINE_SEP);
+        for (final SecretFileEntry entry : entries) {
+            if (entry == null || entry.file() == null || entry.file().isBlank()) {
+                continue;
+            }
+            builder.append(escapeAttr(entry.file())).append(" filter=").append(entry.driverName())
                     .append(LINE_SEP);
         }
-        buidler.append(FILTERS_END).append(LINE_SEP);
-        return buidler.toString();
+        builder.append(FILTERS_END).append(LINE_SEP);
+        return builder.toString();
     }
 
     private void writeGitConfig() {
@@ -199,7 +207,7 @@ public class SecretManager {
             // git CLI (on other machines) treats these names as commands that do
             // not exist, and because required=false it skips the transformation
             // with a warning instead of aborting.
-            out.append(buildFilterConfigBlock(out));
+            out.append(buildFilterConfigBlock(out, files));
             Files.write(config, out.toString().getBytes(StandardCharsets.UTF_8));
         } catch (final IOException e) {
             plugin.getLogger().warning("Unable to write .git/config filters: " + e.getMessage());
@@ -213,9 +221,12 @@ public class SecretManager {
      * keys, with {@code required = false} so the git CLI skips (rather than
      * aborts on) the unknown command names.
      */
-    String buildFilterConfigBlock(final StringBuilder builder) {
+    static String buildFilterConfigBlock(final StringBuilder builder, final List<SecretFileEntry> entries) {
         builder.append(FILTERS_BEGIN).append(LINE_SEP);
-        for (final SecretFileEntry entry : files) {
+        for (final SecretFileEntry entry : entries) {
+            if (entry == null || entry.file() == null || entry.file().isBlank()) {
+                continue;
+            }
             builder.append("[filter \"").append(entry.driverName()).append("\"]").append(LINE_SEP);
             builder.append("\tclean = ").append(entry.cleanKeyFor()).append(LINE_SEP);
             builder.append("\tsmudge = ").append(entry.smudgeKeyFor()).append(LINE_SEP);

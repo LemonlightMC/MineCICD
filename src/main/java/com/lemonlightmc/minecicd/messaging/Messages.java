@@ -169,6 +169,7 @@ public class Messages {
             if (c != '&' || i + 1 >= input.length()) {
                 sb.append(c);
                 i++;
+                continue;
             }
             // migrate legacy color in line
             char code = input.charAt(i + 1);
@@ -188,7 +189,7 @@ public class Messages {
             }
             String tag = legacyCode(code);
             if (tag != null) {
-                if (code == 'x' && i + 2 < input.length()) {
+                if (code == 'x') {
                     StringBuilder hex = new StringBuilder("#");
                     int j = i + 2;
                     boolean valid = true;
@@ -206,6 +207,10 @@ public class Messages {
                         i = j;
                         continue;
                     }
+                    // Malformed &x sequence: keep it literal instead of emitting "null".
+                    sb.append(c).append(code);
+                    i += 2;
+                    continue;
                 }
                 sb.append(tag);
                 i += 2;
