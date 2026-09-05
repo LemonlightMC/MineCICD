@@ -4,19 +4,30 @@ import com.lemonlightmc.minecicd.MineCICD;
 import com.lemonlightmc.minecicd.git.CommitActions.Action;
 import com.lemonlightmc.minecicd.http.ControlRequest.ParseException;
 import com.lemonlightmc.minecicd.util.Ids;
+import com.lemonlightmc.minecicd.util.Threads;
+import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpsConfigurator;
+import com.sun.net.httpserver.HttpsParameters;
 import com.sun.net.httpserver.HttpsServer;
 
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
+
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class ControlServer {
 
@@ -53,11 +64,11 @@ public class ControlServer {
 
     private HttpServer server;
     private ExecutorService httpExecutor;
-    private java.util.concurrent.ScheduledExecutorService failurePurger;
+    private ScheduledExecutorService failurePurger;
 
-    public ControlServer(MineCICD plugin, String host, int port, String path, String secret,
-            ControlSecurity security, Delegate delegate, SSLContext sslContext,
-            long maxBodyBytes) {
+    public ControlServer(final MineCICD plugin, final String host, final int port, final String path, final String secret,
+            final ControlSecurity security, final Delegate delegate, final SSLContext sslContext,
+            final long maxBodyBytes) {
         this.plugin = plugin;
         this.host = host == null || host.isBlank() ? "0.0.0.0" : host;
         this.port = port;
@@ -71,75 +82,78 @@ public class ControlServer {
     }
 
     private static String normalizePath(String p) {
-        String s = p == null ? "minecicd" : p.trim();
-        while (s.startsWith("/")) {
-            s = s.substring(1);
+        if (p == null) {
+            return "minecicd";
         }
-        while (s.endsWith("/")) {
-            s = s.substring(0, s.length() - 1);
+        p = p.trim();
+        while (p.startsWith("/")) {
+            p = p.substring(1);
         }
-        return s;
+        while (p.endsWith("/")) {
+            p = p.substring(0, p.length() - 1);
+        }
+        return p;
     }
 
     public boolean start() {
         try {
-            InetSocketAddress address = new InetSocketAddress(host, port);
             if (sslContext != null) {
-                HttpsServer https = HttpsServer.create(address, 0);
-                https.setHttpsConfigurator(new HttpsConfigurator(sslContext) {
-                    @Override
-                    public void configure(com.sun.net.httpserver.HttpsParameters params) {
-                        try {
-                            javax.net.ssl.SSLContext ctx = getSSLContext();
-                            javax.net.ssl.SSLParameters sslParams = ctx.getDefaultSSLParameters();
-                            // H-04: restrict to TLSv1.2/1.3
-                            String[] protos = sslParams.getProtocols();
-                            java.util.List<String> allowed = new java.util.ArrayList<>();
-                            for (String p : protos) {
-                                if ("TLSv1.2".equals(p) || "TLSv1.3".equals(p))
-                                    allowed.add(p);
-                            }
-                            if (!allowed.isEmpty())
-                                sslParams.setProtocols(allowed.toArray(new String[0]));
-                            params.setSSLParameters(sslParams);
-                        } catch (Exception ignored) {
-                            super.configure(params);
-                        }
-                    }
-                });
+                final HttpsServer https = HttpsServer.create(new InetSocketAddress(host, port), 0);
+                https.setHttpsConfigurator(buildConfigurator());
                 server = https;
             } else {
-                server = HttpServer.create(address, 0);
+                server = HttpServer.create(new InetSocketAddress(host, port), 0);
             }
-            httpExecutor = java.util.concurrent.Executors.newFixedThreadPool(4,
-                    com.lemonlightmc.minecicd.util.Threads.daemonFactory("minecicd-http"));
-            server.setExecutor(httpExecutor);
-            // S-08: periodically evict expired failure entries so distinct invalid clients
+            server.setExecutor(Threads.dameonThreadPool("minecicd-http", 4));
+
+            // periodically evict expired failure entries so distinct invalid clients
             // cannot grow the rate-limit cache without bound.
-            failurePurger = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
-                    com.lemonlightmc.minecicd.util.Threads.daemonFactory("minecicd-failure-purge"));
+            failurePurger = Threads.scheduledThreadExecutor("minecicd-failure-purge");
             failurePurger.scheduleWithFixedDelay(() -> {
                 try {
                     failureLimiter.purgeExpired(System.currentTimeMillis());
-                } catch (Exception e) {
+                } catch (final Exception e) {
                     plugin.getLogger().warning("Failure cache purge error: " + e.getMessage());
                 }
-            }, 60, 60, java.util.concurrent.TimeUnit.SECONDS);
-            register(server, "/" + path, this::handlePost);
-            register(server, "/" + path + "/stream", this::handleStream);
-            register(server, "/" + path + "/status", this::handleStatus);
+            }, 60, 60, TimeUnit.SECONDS);
+
+            // register routes
+            server.createContext("/" + path, this::handlePost);
+            server.createContext("/" + path + "/stream", this::handleStream);
+            server.createContext("/" + path + "/status", this::handleStatus);
+
             server.start();
             plugin.getLogger().info("Control API listening on " + host + ":" + port + "/" + path
                     + (sslContext != null ? " (HTTPS)" : " (HTTP)"));
             return true;
-        } catch (Exception e) {
+        } catch (final Exception e) {
             plugin.getLogger().severe("Unable to start Control API: " + e.getMessage());
             return false;
         }
     }
 
-    private void register(HttpServer srv, String path, com.sun.net.httpserver.HttpHandler handler) {
-        srv.createContext(path, handler);
+    private HttpsConfigurator buildConfigurator() {
+        return new HttpsConfigurator(sslContext) {
+            @Override
+            public void configure(final HttpsParameters params) {
+                try {
+                    final SSLParameters sslParams = sslContext.getDefaultSSLParameters();
+                    // restrict to TLS v1.2/1.3
+                    final List<String> allowed = new ArrayList<>();
+                    for (final String p : sslParams.getProtocols()) {
+                        if ("TLSv1.2".equals(p) || "TLSv1.3".equals(p)) {
+                            allowed.add(p);
+                        }
+                    }
+                    if (!allowed.isEmpty()) {
+                        sslParams.setProtocols(allowed.toArray(String[]::new));
+                    }
+                    params.setSSLParameters(sslParams);
+                } catch (final Exception ignored) {
+                    super.configure(params);
+                }
+            }
+        };
     }
 
     public void stop() {
@@ -157,58 +171,92 @@ public class ControlServer {
         }
     }
 
-    private void handlePost(HttpExchange exchange) {
-        long startNano = System.nanoTime();
-        try {
-            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                respond(exchange, 405, "{\"error\":\"Method not allowed\"}");
-                return;
-            }
-            if (isRateLimited(exchange)) {
-                respond(exchange, 429, "{\"error\":\"Too many requests\"}");
-                return;
-            }
-            String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+    private void authenticate(final HttpExchange exchange, final String requestId, final byte[] body) {
+        final Headers headers = exchange.getRequestHeaders();
+        security.authenticate(
+                secret,
+                headers.getFirst("X-MineCICD-Timestamp"),
+                headers.getFirst("X-MineCICD-Nonce"),
+                requestId,
+                headers.getFirst("X-MineCICD-Signature"),
+                body);
+    }
+
+    private byte[] preprocessRequest(final HttpExchange exchange, final String method, final boolean isJSON) {
+        // check request method
+        if (!method.equalsIgnoreCase(exchange.getRequestMethod())) {
+            respond(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return null;
+        }
+        // rate limiting
+        if (isRateLimited(exchange)) {
+            respond(exchange, 429, "{\"error\":\"Too many requests\"}");
+            return null;
+        }
+        // Check JSON Body Type
+        if (isJSON) {
+            final String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
             if (contentType == null || !contentType.toLowerCase().startsWith("application/json")) {
                 respond(exchange, 415, "{\"error\":\"Content-Type must be application/json\"}");
-                return;
+                return null;
             }
-            // L-02/M-07: reject oversized headers before body read
-            if (isHeaderTooLarge(exchange)) {
-                respond(exchange, 431, "{\"error\":\"Headers too large\"}");
-                return;
-            }
-            byte[] body = readBody(exchange);
-            if (body == null) {
-                respond(exchange, 413, "{\"error\":\"Request body too large\"}");
-                return;
-            }
+        }
+        // check headers size limit
+        if (isHeaderTooLarge(exchange)) {
+            respond(exchange, 431, "{\"error\":\"Headers too large\"}");
+            return null;
+        }
+        // read body
+        final byte[] body = readBody(exchange);
+        if (body == null) {
+            respond(exchange, 413, "{\"error\":\"Request body too large\"}");
+            return null;
+        }
+        return body;
+    }
+
+    private void postprocess(final HttpExchange exchange, final String reqeustId, final byte[] body) {
+        // validate request id
+        if (!Ids.isValidRequestId(reqeustId)) {
+            respond(exchange, 400, "{\"error\":\"Invalid requestId\"}");
+            return;
+        }
+        // authenticate
+        try {
+            authenticate(exchange, reqeustId, body);
+        } catch (final ControlSecurity.RejectException e) {
+            recordFailure(exchange);
+            respond(exchange, 401, "{\"error\":\"Unauthorized\"}");
+            return;
+        }
+    }
+
+    private void handlePost(final HttpExchange exchange) {
+        final long startNano = System.nanoTime();
+        try {
+            final byte[] body = preprocessRequest(exchange, "POST", true);
+
+            // parse request from body
             ControlRequest request;
             try {
                 request = ControlRequest.parse(new String(body, StandardCharsets.UTF_8));
-            } catch (ParseException e) {
+            } catch (final ParseException e) {
                 respond(exchange, 400, "{\"error\":\"" + jsonEscape(e.getMessage()) + "\"}");
                 return;
             }
-            if (!Ids.isValidRequestId(request.requestId())) {
-                respond(exchange, 400, "{\"error\":\"Invalid requestId\"}");
-                return;
-            }
-            try {
-                authenticate(exchange, request.requestId(), body);
-            } catch (ControlSecurity.RejectException e) {
-                recordFailure(exchange);
-                respond(exchange, 401, "{\"error\":\"Unauthorized\"}");
-                return;
-            }
+            postprocess(exchange, request.requestId(), body);
+
+            // validate actions
             try {
                 security.validateActions(request.actions());
-            } catch (ControlSecurity.RejectException e) {
+            } catch (final ControlSecurity.RejectException e) {
                 respond(exchange, 403, "{\"error\":\"" + jsonEscape(e.getMessage()) + "\"}");
                 return;
             }
+
+            // execute git
             String branch = request.branch();
-            String configured = plugin.config() == null ? null : plugin.config().git().branch();
+            final String configured = plugin.config() == null ? null : plugin.config().git().branch();
             if (branch == null || branch.isBlank()) {
                 branch = configured;
             }
@@ -222,18 +270,19 @@ public class ControlServer {
             }
             delegate.acceptRequest(request.requestId(), request.actions(), branch);
             respond(exchange, 202, "{\"accepted\":true,\"requestId\":\"" + jsonEscape(request.requestId()) + "\"}");
-        } catch (Exception e) {
+
+        } catch (final Exception e) {
             plugin.getLogger().warning("Control POST error: " + e.getMessage());
             respond(exchange, 500, "{\"error\":\"Internal error\"}");
         }
-        long elapsed = (System.nanoTime() - startNano) / 1_000_000;
+        final long elapsed = (System.nanoTime() - startNano) / 1_000_000;
         if (elapsed > 50) {
             plugin.getLogger().info("Control POST handled in " + elapsed + "ms");
         }
     }
 
     private boolean branchMatches(String requested) {
-        var cfg = plugin.config();
+        final var cfg = plugin.config();
         if (cfg == null) {
             return false;
         }
@@ -250,46 +299,14 @@ public class ControlServer {
         return cfg.control().branches() != null && cfg.control().branches().contains(requested);
     }
 
-    private void authenticate(HttpExchange exchange, String requestId, byte[] body) {
-        var headers = exchange.getRequestHeaders();
-        String ts = headers.getFirst("X-MineCICD-Timestamp");
-        String nonce = headers.getFirst("X-MineCICD-Nonce");
-        String mac = headers.getFirst("X-MineCICD-Signature");
-        security.authenticate(secret, ts, nonce, requestId, mac, body);
-    }
+    private void handleStream(final HttpExchange exchange) {
+        final byte[] body = preprocessRequest(exchange, "POST", false);
 
-    private void handleStream(HttpExchange exchange) {
-        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-            respond(exchange, 405, "{\"error\":\"Method not allowed\"}");
-            return;
-        }
-        if (isRateLimited(exchange)) {
-            respond(exchange, 429, "{\"error\":\"Too many requests\"}");
-            return;
-        }
-        if (isHeaderTooLarge(exchange)) {
-            respond(exchange, 431, "{\"error\":\"Headers too large\"}");
-            return;
-        }
-        String requestId = query(exchange, "requestId");
-        if (requestId == null || !Ids.isValidRequestId(requestId)) {
-            respond(exchange, 400, "{\"error\":\"Missing requestId\"}");
-            return;
-        }
-        byte[] body = readBody(exchange);
-        if (body == null) {
-            respond(exchange, 413, "{\"error\":\"Request body too large\"}");
-            return;
-        }
-        try {
-            authenticate(exchange, requestId, body);
-        } catch (ControlSecurity.RejectException e) {
-            recordFailure(exchange);
-            respond(exchange, 401, "{\"error\":\"Unauthorized\"}");
-            return;
-        }
-        // L-04: cap exchanges per requestId
-        ProgressStream existing = delegate.progressStream(requestId);
+        final String requestId = query(exchange, "requestId");
+        postprocess(exchange, requestId, body);
+
+        // cap exchanges per requestId
+        final ProgressStream existing = delegate.progressStream(requestId);
         if (existing != null && existing.exchanges().size() >= MAX_EXCHANGES_PER_REQUEST) {
             respond(exchange, 429, "{\"error\":\"Too many streams\"}");
             return;
@@ -298,10 +315,10 @@ public class ControlServer {
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
         exchange.getResponseHeaders().set("Connection", "keep-alive");
         exchange.getResponseHeaders().set("X-Accel-Buffering", "no");
-        // M-02: removed Access-Control-Allow-Origin: * (SSE is server-to-server)
+        // removed Access-Control-Allow-Origin: * (SSE is server-to-server)
         try {
             exchange.sendResponseHeaders(200, 0);
-        } catch (IOException e) {
+        } catch (final IOException e) {
             return;
         }
         ProgressStream stream = delegate.progressStream(requestId);
@@ -312,12 +329,12 @@ public class ControlServer {
         if (!activeStream.add(exchange)) {
             try {
                 exchange.close();
-            } catch (Exception ignored) {
+            } catch (final Exception ignored) {
             }
             return;
         }
-        // L-04: waiter with idle timeout and proper exchange close
-        Thread waiter = new Thread(() -> {
+        // waiter with idle timeout and proper exchange close
+        final Thread waiter = new Thread(() -> {
             long start = System.currentTimeMillis();
             try {
                 int current = 0;
@@ -326,18 +343,18 @@ public class ControlServer {
                         activeStream.close();
                         break;
                     }
-                    int count = delegate.controlStatus().eventCount(requestId);
+                    final int count = delegate.controlStatus().eventCount(requestId);
                     if (count > current) {
                         current = count;
                         start = System.currentTimeMillis();
                     }
                     Thread.sleep(1000);
                 }
-            } catch (InterruptedException ignored) {
+            } catch (final InterruptedException ignored) {
             } finally {
                 try {
                     exchange.close();
-                } catch (Exception ignored) {
+                } catch (final Exception ignored) {
                 }
             }
         }, "minecicd-stream-" + requestId);
@@ -345,53 +362,29 @@ public class ControlServer {
         waiter.start();
     }
 
-    private void handleStatus(HttpExchange exchange) {
-        if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-            respond(exchange, 405, "{\"error\":\"Method not allowed\"}");
-            return;
-        }
-        if (isRateLimited(exchange)) {
-            respond(exchange, 429, "{\"error\":\"Too many requests\"}");
-            return;
-        }
-        if (isHeaderTooLarge(exchange)) {
-            respond(exchange, 431, "{\"error\":\"Headers too large\"}");
-            return;
-        }
-        String requestId = query(exchange, "requestId");
-        if (requestId == null || !Ids.isValidRequestId(requestId)) {
-            respond(exchange, 400, "{\"error\":\"Missing requestId\"}");
-            return;
-        }
-        byte[] body = readBody(exchange);
-        if (body == null) {
-            respond(exchange, 413, "{\"error\":\"Request body too large\"}");
-            return;
-        }
-        try {
-            authenticate(exchange, requestId, body);
-        } catch (ControlSecurity.RejectException e) {
-            recordFailure(exchange);
-            respond(exchange, 401, "{\"error\":\"Unauthorized\"}");
-            return;
-        }
+    private void handleStatus(final HttpExchange exchange) {
+        final byte[] body = preprocessRequest(exchange, "GET", false);
+
+        final String requestId = query(exchange, "requestId");
+        postprocess(exchange, requestId, body);
+
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
-        ControlStatus.Entry entry = delegate.controlStatus().get(requestId);
+        final ControlStatus.Entry entry = delegate.controlStatus().get(requestId);
         if (entry == null) {
             respond(exchange, 404, "{\"error\":\"Unknown requestId\"}");
             return;
         }
-        String payload = "{\"requestId\":\"" + jsonEscape(requestId) + "\",\"status\":\"" + entry.status()
+        final String payload = "{\"requestId\":\"" + jsonEscape(requestId) + "\",\"status\":\"" + entry.status()
                 + "\",\"completed\":" + entry.completedActions() + ",\"total\":" + entry.totalActions()
                 + ",\"error\":\"" + jsonEscape(entry.error() == null ? "" : entry.error()) + "\"}";
         respond(exchange, 200, payload);
     }
 
-    private byte[] readBody(HttpExchange exchange) {
+    private byte[] readBody(final HttpExchange exchange) {
         try {
-            InputStream in = exchange.getRequestBody();
-            java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
-            byte[] chunk = new byte[4096];
+            final InputStream in = exchange.getRequestBody();
+            final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            final byte[] chunk = new byte[4096];
             int total = 0;
             int read;
             while ((read = in.read(chunk)) != -1) {
@@ -402,54 +395,57 @@ public class ControlServer {
                 buffer.write(chunk, 0, read);
             }
             return buffer.toByteArray();
-        } catch (IOException e) {
+        } catch (final IOException e) {
             return new byte[0];
         }
     }
 
-    private String query(HttpExchange exchange, String key) {
-        String raw = exchange.getRequestURI().getRawQuery();
+    private String query(final HttpExchange exchange, final String key) {
+        final String raw = exchange.getRequestURI().getRawQuery();
         if (raw == null) {
             return null;
         }
-        for (String pair : raw.split("&")) {
-            String[] kv = pair.split("=", 2);
-            if (kv.length == 2 && kv[0].equals(key)) {
-                try {
-                    return java.net.URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
-                } catch (Exception e) {
-                    return kv[1];
-                }
+        for (final String pair : raw.split("&")) {
+            final String[] kv = pair.split("=", 2);
+            if (kv.length != 2 || !kv[0].equals(key)) {
+                continue;
+            }
+            try {
+                return URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
+            } catch (final Exception e) {
+                return kv[1];
             }
         }
         return null;
     }
 
-    private void respond(HttpExchange exchange, int status, String body) {
-        byte[] payload = body == null ? new byte[0] : body.getBytes(StandardCharsets.UTF_8);
+    private void respond(final HttpExchange exchange, final int status, final String body) {
+        if (body == null || body.isEmpty()) {
+            exchange.close();
+        }
+        final byte[] payload = body.getBytes(StandardCharsets.UTF_8);
+        if (payload.length <= 0) {
+            exchange.close();
+        }
         try {
             exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
             exchange.getResponseHeaders().set("Cache-Control", "no-store");
             exchange.sendResponseHeaders(status, payload.length);
-            if (payload.length > 0) {
-                try (OutputStream out = exchange.getResponseBody()) {
-                    out.write(payload);
-                }
-            } else {
-                exchange.close();
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(payload);
             }
-        } catch (IOException e) {
+        } catch (final IOException e) {
             try {
                 exchange.close();
-            } catch (Exception ignored) {
+            } catch (final Exception ignored) {
             }
         }
     }
 
-    private boolean isHeaderTooLarge(HttpExchange exchange) {
+    private boolean isHeaderTooLarge(final HttpExchange exchange) {
         long total = 0;
-        for (java.util.Map.Entry<String, java.util.List<String>> entry : exchange.getRequestHeaders().entrySet()) {
-            String name = entry.getKey();
+        for (final Map.Entry<String, List<String>> entry : exchange.getRequestHeaders().entrySet()) {
+            final String name = entry.getKey();
             if (name != null) {
                 if (name.length() > MAX_HEADER_BYTES) {
                     return true;
@@ -459,38 +455,37 @@ public class ControlServer {
                     return true;
                 }
             }
-            for (String v : entry.getValue()) {
-                if (v != null) {
-                    if (v.length() > MAX_HEADER_BYTES) {
-                        return true;
-                    }
-                    total += v.length();
-                    if (total > MAX_HEADER_BYTES * 4) {
-                        return true;
-                    }
+            for (final String v : entry.getValue()) {
+                if (v == null) {
+                    continue;
+                }
+                if (v.length() > MAX_HEADER_BYTES) {
+                    return true;
+                }
+                total += v.length();
+                if (total > MAX_HEADER_BYTES * 4) {
+                    return true;
                 }
             }
         }
         return false;
     }
 
-    private boolean isRateLimited(HttpExchange exchange) {
-        String ip = clientIp(exchange);
-        return failureLimiter.isRateLimited(ip, System.currentTimeMillis());
+    private boolean isRateLimited(final HttpExchange exchange) {
+        return failureLimiter.isRateLimited(clientIp(exchange), System.currentTimeMillis());
     }
 
-    private void recordFailure(HttpExchange exchange) {
-        String ip = clientIp(exchange);
-        failureLimiter.recordFailure(ip, System.currentTimeMillis());
+    private void recordFailure(final HttpExchange exchange) {
+        failureLimiter.recordFailure(clientIp(exchange), System.currentTimeMillis());
     }
 
-    private static String clientIp(HttpExchange exchange) {
+    private static String clientIp(final HttpExchange exchange) {
         return exchange.getRemoteAddress() != null
                 ? exchange.getRemoteAddress().getAddress().getHostAddress()
                 : "unknown";
     }
 
-    private static String jsonEscape(String s) {
+    private static String jsonEscape(final String s) {
         if (s == null) {
             return "";
         }

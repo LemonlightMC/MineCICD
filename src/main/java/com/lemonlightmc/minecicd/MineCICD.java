@@ -125,12 +125,13 @@ public final class MineCICD extends JavaPlugin {
         var ssl = ControlTls.build(control.tls().keystore(), control.tls().password(), control.tls().enabled());
         ControlServer server = new ControlServer(this, control.host(), control.port(), control.path(), control.secret(),
                 security, cicdService, ssl, control.maxBodyBytes());
-        boolean started = server.start();
-        controlActive = started;
-        if (started) {
+
+        if (server.start()) {
+            controlActive = true;
             controlAddress = "http" + (ssl != null ? "s" : "") + "://" + control.host() + ":" + control.port()
                     + "/" + control.path();
         } else {
+            controlActive = true;
             controlAddress = "failed to start";
         }
     }

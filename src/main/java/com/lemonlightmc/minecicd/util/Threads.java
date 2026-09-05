@@ -2,6 +2,7 @@ package com.lemonlightmc.minecicd.util;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 
 import org.bukkit.Bukkit;
@@ -23,6 +24,14 @@ public final class Threads {
 
     public static ExecutorService singleDaemonWorker(String name) {
         return Executors.newSingleThreadExecutor(daemonFactory(name));
+    }
+
+    public static ExecutorService dameonThreadPool(String name, int amount) {
+        return Executors.newFixedThreadPool(amount, daemonFactory(name));
+    }
+
+    public static ScheduledExecutorService scheduledThreadExecutor(String name) {
+        return Executors.newSingleThreadScheduledExecutor(daemonFactory(name));
     }
 
     public static void marshaled(MineCICD plugin, Runnable runnable) {
