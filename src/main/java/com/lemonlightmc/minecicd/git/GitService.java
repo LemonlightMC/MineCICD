@@ -43,7 +43,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class GitService {
-
+    
     private static final int PAGE_SIZE = 5;
     private static final Pattern COMMIT_FROM_URL = Pattern.compile("[0-9a-fA-F]{40}");
 

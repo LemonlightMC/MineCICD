@@ -77,6 +77,9 @@ public final class MineCICD extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (secretManager != null) {
+            secretManager.unregisterFilters();
+        }
         if (controlServer != null) {
             controlServer.stop();
             controlServer = null;
