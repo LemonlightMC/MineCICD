@@ -1,6 +1,7 @@
 package com.lemonlightmc.minecicd.secrets;
 
 import com.lemonlightmc.minecicd.MineCICD;
+
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.eclipse.jgit.attributes.FilterCommandRegistry;
@@ -30,13 +31,15 @@ public class SecretManager {
 
     private final MineCICD plugin;
     private final Path dataDir;
+    private final List<SecretFileEntry> files = new ArrayList<>();
     private final List<SecretMapping> mappings = new ArrayList<>();
+
     private final Set<String> registeredFilterKeys = new HashSet<>();
 
-    public record SecretMapping(String file, String key, String value) {
-
+    public static record SecretMapping(String file, String key, String value) {
         public String placeholder() {
-            return "__MCICD_" + Base64.getEncoder().encodeToString(key.getBytes(StandardCharsets.UTF_8)) + "__";
+            return "__MCICD_" + Base64.getEncoder().encodeToString(key.getBytes(StandardCharsets.UTF_8))
+                    + "__";
         }
 
         public boolean isPresent() {
@@ -48,7 +51,25 @@ public class SecretManager {
         }
     }
 
-    public SecretManager(MineCICD plugin) {
+    public static record SecretFileEntry(String file, String driverName) {
+
+        public SecretFileEntry(final String file) {
+            this(file.replace('\\', '/'), SecretManager.driverNameFor(file));
+
+        }
+
+        /** Registry key for the JGit builtin clean filter of a file. */
+        public String cleanKeyFor() {
+            return driverName + "-clean";
+        }
+
+        /** Registry key for the JGit builtin smudge filter of a file. */
+        public String smudgeKeyFor() {
+            return driverName + "-smudge";
+        }
+    }
+
+    public SecretManager(final MineCICD plugin) {
         this.plugin = plugin;
         this.dataDir = plugin.getDataFolder().toPath();
     }
@@ -61,41 +82,39 @@ public class SecretManager {
         return mappings;
     }
 
-    public List<String> files() {
-        List<String> out = new ArrayList<>();
-        for (SecretMapping mapping : mappings) {
-            if (!out.contains(mapping.file())) {
-                out.add(mapping.file());
-            }
-        }
-        return out;
+    public List<SecretFileEntry> files() {
+        return files;
     }
 
     public void load() {
         mappings.clear();
-        File secretsFile = dataDir.resolve("secrets.yml").toFile();
+        files.clear();
+        final File secretsFile = dataDir.resolve("secrets.yml").toFile();
         if (secretsFile.isFile()) {
-            YamlConfiguration secrets = YamlConfiguration.loadConfiguration(secretsFile);
-            for (String path : secrets.getKeys(false)) {
+            final YamlConfiguration secrets = YamlConfiguration.loadConfiguration(secretsFile);
+            for (final String path : secrets.getKeys(false)) {
                 if (!secrets.isConfigurationSection(path)) {
                     continue;
                 }
-                ConfigurationSection section = secrets.getConfigurationSection(path);
-                String file = section.getString("file");
+                final ConfigurationSection section = secrets.getConfigurationSection(path);
+                final String file = section.getString("file");
                 if (file == null || file.isBlank()) {
                     continue;
                 }
-                for (String secretKey : section.getKeys(false)) {
+                files.add(new SecretFileEntry(file));
+                for (final String secretKey : section.getKeys(false)) {
                     if ("file".equals(secretKey)) {
                         continue;
                     }
-                    String secretValue = section.getString(secretKey);
+                    final String secretValue = section.getString(secretKey);
                     if (secretValue == null || secretValue.isEmpty()) {
                         continue;
                     }
                     mappings.add(new SecretMapping(file, secretKey, secretValue));
+
                 }
             }
+            files.removeIf(entry -> files.contains(entry));
         }
 
         // Write .gitattributes routing each configured file to its own per-file
@@ -114,14 +133,14 @@ public class SecretManager {
     }
 
     private void writeAttributes() {
-        Path attributes = plugin.serverRoot().resolve(ATTR_FILE);
+        final Path attributes = plugin.serverRoot().resolve(ATTR_FILE);
         try {
-            StringBuilder out = new StringBuilder();
+            final StringBuilder out = new StringBuilder();
             // append existing file
             if (Files.exists(attributes)) {
-                String existing = Files.readString(attributes, StandardCharsets.UTF_8);
-                int begin = existing.indexOf(FILTERS_BEGIN);
-                int end = existing.indexOf(FILTERS_END);
+                final String existing = Files.readString(attributes, StandardCharsets.UTF_8);
+                final int begin = existing.indexOf(FILTERS_BEGIN);
+                final int end = existing.indexOf(FILTERS_END);
                 if (begin >= 0 && end > begin) {
                     out.append(existing, 0, begin);
                     out.append(existing.substring(end));
@@ -135,9 +154,9 @@ public class SecretManager {
             }
 
             // append filters
-            out.append(buildAttributesBlock(files()));
+            out.append(buildAttributesBlock(out));
             Files.write(attributes, out.toString().getBytes(StandardCharsets.UTF_8));
-        } catch (IOException e) {
+        } catch (final IOException e) {
             plugin.getLogger().warning("Unable to write .gitattributes: " + e.getMessage());
         }
     }
@@ -148,28 +167,25 @@ public class SecretManager {
      * wrapped in the markers that {@code writeAttributes} uses to replace the
      * block on the next write.
      */
-    static String buildAttributesBlock(List<String> files) {
-        StringBuilder out = new StringBuilder();
-        out.append(FILTERS_BEGIN).append(LINE_SEP);
-        for (String file : files) {
-            if (file != null && !file.isBlank()) {
-                out.append(escapeAttr(normalized(file))).append(" filter=").append(driverNameFor(file))
-                        .append(LINE_SEP);
-            }
+    String buildAttributesBlock(final StringBuilder buidler) {
+        buidler.append(FILTERS_BEGIN).append(LINE_SEP);
+        for (final SecretFileEntry entry : files) {
+            buidler.append(escapeAttr(entry.file())).append(" filter=").append(entry.driverName())
+                    .append(LINE_SEP);
         }
-        out.append(FILTERS_END).append(LINE_SEP);
-        return out.toString();
+        buidler.append(FILTERS_END).append(LINE_SEP);
+        return buidler.toString();
     }
 
     private void writeGitConfig() {
-        Path gitDir = plugin.serverRoot().resolve(GIT_DIR);
+        final Path gitDir = plugin.serverRoot().resolve(GIT_DIR);
         if (!Files.isDirectory(gitDir)) {
             return;
         }
-        Path config = gitDir.resolve(CONFIG_FILE);
+        final Path config = gitDir.resolve(CONFIG_FILE);
 
         try {
-            StringBuilder out = new StringBuilder();
+            final StringBuilder out = new StringBuilder();
             if (Files.exists(config)) {
                 out.append(stripStaleSections(Files.readString(config, StandardCharsets.UTF_8)));
             }
@@ -183,9 +199,9 @@ public class SecretManager {
             // git CLI (on other machines) treats these names as commands that do
             // not exist, and because required=false it skips the transformation
             // with a warning instead of aborting.
-            out.append(buildFilterConfigBlock(files()));
+            out.append(buildFilterConfigBlock(out));
             Files.write(config, out.toString().getBytes(StandardCharsets.UTF_8));
-        } catch (IOException e) {
+        } catch (final IOException e) {
             plugin.getLogger().warning("Unable to write .git/config filters: " + e.getMessage());
         }
     }
@@ -197,21 +213,17 @@ public class SecretManager {
      * keys, with {@code required = false} so the git CLI skips (rather than
      * aborts on) the unknown command names.
      */
-    static String buildFilterConfigBlock(List<String> files) {
-        StringBuilder out = new StringBuilder();
-        out.append(FILTERS_BEGIN).append(LINE_SEP);
-        for (String file : files) {
-            if (file == null || file.isBlank()) {
-                continue;
-            }
-            out.append("[filter \"").append(driverNameFor(file)).append("\"]").append(LINE_SEP);
-            out.append("\tclean = ").append(cleanKeyFor(file)).append(LINE_SEP);
-            out.append("\tsmudge = ").append(smudgeKeyFor(file)).append(LINE_SEP);
-            out.append("\trequired = false").append(LINE_SEP);
-            out.append(LINE_SEP);
+    String buildFilterConfigBlock(final StringBuilder builder) {
+        builder.append(FILTERS_BEGIN).append(LINE_SEP);
+        for (final SecretFileEntry entry : files) {
+            builder.append("[filter \"").append(entry.driverName()).append("\"]").append(LINE_SEP);
+            builder.append("\tclean = ").append(entry.cleanKeyFor()).append(LINE_SEP);
+            builder.append("\tsmudge = ").append(entry.smudgeKeyFor()).append(LINE_SEP);
+            builder.append("\trequired = false").append(LINE_SEP);
+            builder.append(LINE_SEP);
         }
-        out.append(FILTERS_END).append(LINE_SEP);
-        return out.toString();
+        builder.append(FILTERS_END).append(LINE_SEP);
+        return builder.toString();
     }
 
     /**
@@ -221,20 +233,20 @@ public class SecretManager {
      * {@code [filter "minecicd-*"]} builtin sections. Other sections are kept
      * byte-for-byte (line endings normalized by the caller).
      */
-    static String stripStaleSections(String config) {
-        String[] lines = config.split("\\r?\\n", -1);
+    static String stripStaleSections(final String config) {
+        final String[] lines = config.split("\\r?\\n", -1);
         // split(..., -1) yields one trailing empty element for a final newline;
         // that element must not become an extra (growing) empty line on each pass.
         int last = lines.length;
         if (last > 0 && lines[last - 1].isEmpty()) {
             last--;
         }
-        StringBuilder out = new StringBuilder();
+        final StringBuilder out = new StringBuilder();
         boolean skipToEndMarker = false;
         boolean skipToNextSection = false;
         for (int i = 0; i < last; i++) {
-            String line = lines[i];
-            String trimmed = line.trim();
+            final String line = lines[i];
+            final String trimmed = line.trim();
             if (skipToEndMarker) {
                 if (trimmed.equals(FILTERS_END)) {
                     skipToEndMarker = false;
@@ -261,7 +273,7 @@ public class SecretManager {
         return out.toString();
     }
 
-    private static boolean isMineCicdSectionHeader(String trimmed) {
+    private static boolean isMineCicdSectionHeader(final String trimmed) {
         return trimmed.startsWith("[filter \"" + FILTER_NAME + "\"]")
                 || trimmed.startsWith("[filter \"" + FILTER_NAME + "-");
     }
@@ -272,13 +284,13 @@ public class SecretManager {
      */
     public void registerFilters() {
         unregisterFilters();
-        for (String file : files()) {
-            registerKey(cleanKeyFor(file),
-                    new MineCicdFilterFactory(this::mapping, normalized(file), MineCicdFilterCommand.Direction.CLEAN));
-            registerKey(smudgeKeyFor(file),
-                    new MineCicdFilterFactory(this::mapping, normalized(file), MineCicdFilterCommand.Direction.SMUDGE));
+        for (final SecretFileEntry entry : files) {
+            registerKey(entry.cleanKeyFor(),
+                    new MineCicdFilterFactory(this::mapping, entry.file(), MineCicdFilterCommand.Direction.CLEAN));
+            registerKey(entry.smudgeKeyFor(),
+                    new MineCicdFilterFactory(this::mapping, entry.file(), MineCicdFilterCommand.Direction.SMUDGE));
         }
-        if (!files().isEmpty()) {
+        if (!files.isEmpty()) {
             plugin.getLogger().info("Registered " + registeredFilterKeys.size() + " builtin replace filters.");
         }
     }
@@ -288,13 +300,13 @@ public class SecretManager {
      * every reload and on plugin disable.
      */
     public void unregisterFilters() {
-        for (String key : registeredFilterKeys) {
+        for (final String key : registeredFilterKeys) {
             FilterCommandRegistry.unregister(key);
         }
         registeredFilterKeys.clear();
     }
 
-    private void registerKey(String key, MineCicdFilterFactory factory) {
+    private void registerKey(final String key, final MineCicdFilterFactory factory) {
         FilterCommandRegistry.register(key, factory);
         registeredFilterKeys.add(key);
     }
@@ -304,37 +316,22 @@ public class SecretManager {
      * SHA-256 of the normalized path). The names are stable across restarts and
      * use only {@code [0-9a-f]}, which is safe in gitattributes attribute values.
      */
-    public static String driverNameFor(String file) {
-        String normalized = normalized(file);
+    private static String driverNameFor(final String file) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(normalized.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(16);
+            final MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            final byte[] hash = digest.digest(file.getBytes(StandardCharsets.UTF_8));
+            final StringBuilder hex = new StringBuilder(16);
             for (int i = 0; i < 8; i++) {
                 hex.append(String.format("%02x", hash[i]));
             }
             return FILTER_NAME + "-" + hex;
-        } catch (NoSuchAlgorithmException e) {
+        } catch (final NoSuchAlgorithmException e) {
             // SHA-256 is mandated by the JCA specification.
             throw new IllegalStateException("SHA-256 not available", e);
         }
     }
 
-    /** Registry key for the JGit builtin clean filter of a file. */
-    public static String cleanKeyFor(String file) {
-        return driverNameFor(file) + "-clean";
-    }
-
-    /** Registry key for the JGit builtin smudge filter of a file. */
-    public static String smudgeKeyFor(String file) {
-        return driverNameFor(file) + "-smudge";
-    }
-
-    private static String normalized(String file) {
-        return file.replace('\\', '/');
-    }
-
-    private static String escapeAttr(String file) {
+    private static String escapeAttr(final String file) {
         return file.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

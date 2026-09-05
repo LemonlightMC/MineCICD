@@ -51,9 +51,9 @@ public final class MineCicdFilterCommand extends FilterCommand {
      * @param in            content to transform
      * @param out           destination for the transformed content
      */
-    public MineCicdFilterCommand(Direction direction, String file,
-            List<SecretMapping> scopedMapping,
-            InputStream in, OutputStream out) {
+    public MineCicdFilterCommand(final Direction direction, final String file,
+            final List<SecretMapping> scopedMapping,
+            final InputStream in, final OutputStream out) {
         super(in, out);
         this.direction = direction;
         this.file = file;
@@ -72,8 +72,8 @@ public final class MineCicdFilterCommand extends FilterCommand {
         }
         finished = true;
         try {
-            String input = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            String output = switch (direction) {
+            final String input = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            final String output = switch (direction) {
                 case CLEAN -> clean(input, scopedMapping, file);
                 case SMUDGE -> smudge(input, scopedMapping, file);
             };
@@ -96,10 +96,10 @@ public final class MineCicdFilterCommand extends FilterCommand {
      * secret
      * or placeholder belonging to one file is never written into another file.
      */
-    private static String clean(String input, List<SecretMapping> mappings, String targetFile) {
-        String normalizedTarget = targetFile != null ? targetFile.replace('\\', '/') : null;
+    private static String clean(final String input, final List<SecretMapping> mappings, final String targetFile) {
+        final String normalizedTarget = targetFile != null ? targetFile.replace('\\', '/') : null;
         String current = input;
-        for (SecretMapping entry : mappings) {
+        for (final SecretMapping entry : mappings) {
             if (!normalizedTarget.equals(entry.file().replace('\\', '/'))) {
                 continue;
             }
@@ -117,10 +117,10 @@ public final class MineCicdFilterCommand extends FilterCommand {
      * file's secret
      * from being inserted into another.
      */
-    private static String smudge(String input, List<SecretMapping> mappings, String targetFile) {
-        String normalizedTarget = targetFile != null ? targetFile.replace('\\', '/') : null;
+    private static String smudge(final String input, final List<SecretMapping> mappings, final String targetFile) {
+        final String normalizedTarget = targetFile != null ? targetFile.replace('\\', '/') : null;
         String current = input;
-        for (SecretMapping entry : mappings) {
+        for (final SecretMapping entry : mappings) {
             if (!normalizedTarget.equals(entry.file().replace('\\', '/'))) {
                 continue;
             }

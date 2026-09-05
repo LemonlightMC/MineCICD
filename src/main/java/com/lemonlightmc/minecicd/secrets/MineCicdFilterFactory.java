@@ -39,15 +39,15 @@ public final class MineCicdFilterFactory implements FilterCommandFactory {
      *                        (separators normalized to '/')
      * @param direction       filter direction applied by created commands
      */
-    public MineCicdFilterFactory(Supplier<List<SecretMapping>> mappingSupplier, String file,
-            MineCicdFilterCommand.Direction direction) {
+    public MineCicdFilterFactory(final Supplier<List<SecretMapping>> mappingSupplier, final String file,
+            final MineCicdFilterCommand.Direction direction) {
         this.mappingSupplier = mappingSupplier;
         this.file = file;
         this.direction = direction;
     }
 
     @Override
-    public FilterCommand create(Repository db, InputStream in, OutputStream out) {
+    public FilterCommand create(final Repository db, final InputStream in, final OutputStream out) {
         return new MineCicdFilterCommand(direction, file, scopedMapping(), in, out);
     }
 
@@ -58,15 +58,15 @@ public final class MineCicdFilterFactory implements FilterCommandFactory {
      */
     private List<SecretMapping> scopedMapping() {
         try {
-            List<SecretMapping> mappings = mappingSupplier.get();
-            List<SecretMapping> submappings = new ArrayList<>();
-            for (SecretMapping entry : mappings) {
+            final List<SecretMapping> mappings = mappingSupplier.get();
+            final List<SecretMapping> submappings = new ArrayList<>();
+            for (final SecretMapping entry : mappings) {
                 if (file.equals(entry.normalizedFile())) {
                     submappings.add(entry);
                 }
             }
             return submappings;
-        } catch (RuntimeException ignored) {
+        } catch (final RuntimeException ignored) {
             // Mapping may be mid-reload; never propagate here (see class javadoc).
             return List.of();
         }
