@@ -33,6 +33,10 @@ public class MineCICDConfig {
     public record Tls(boolean enabled, String keystore, String password) {
     }
 
+    public record RateLimit(boolean enabled, boolean failuresOnly, int failureLimit, int maxEntries,
+            long windowSeconds) {
+    }
+
     public record Actions(
             boolean pull, boolean push, boolean restart, boolean globalReload,
             boolean reloadPlugins, boolean commands, List<String> commandAllow,
@@ -41,7 +45,7 @@ public class MineCICDConfig {
 
     public record Control(String host, int port, String path, String secret, Tls tls,
             String pushMessage, List<String> branches, long maxBodyBytes,
-            long replayWindowSeconds, Actions actions) {
+            long replayWindowSeconds, Actions actions, RateLimit rateLimit) {
     }
 
     private final MineCICD plugin;
@@ -189,7 +193,13 @@ public class MineCICDConfig {
                         act.getBoolean("commands.enabled", false),
                         act.getStringList("commands.allow"),
                         act.getBoolean("scripts.enabled", false),
-                       act.getStringList("scripts.allow")));
+                        act.getStringList("scripts.allow")),
+                new RateLimit(
+                        controlSection.getBoolean("rate-limit.enabled", true),
+                        controlSection.getBoolean("rate-limit.failures-only", true),
+                        controlSection.getInt("rate-limit.failure-limit", 5),
+                        controlSection.getInt("rate-limit.max-entries", 1000),
+                        controlSection.getLong("rate-limit.window-seconds", 60000)));
     }
 
     public Git git() {

@@ -52,6 +52,17 @@ control:
   max-body-bytes: 65536
   # Reject requests with a timestamp older than this many seconds
   replay-window-seconds: 300
+  # counts requests and rejects further requests after a threshold in a time window.
+  rate-limit:
+    enabled: true
+    # count only failed requests (non-2xx responses) instead of all requests
+    failures-only: true
+    # Maximum number of failed requests before rejecting further requests
+    failure-limit: 5
+    # Maximum number of entries in the rate-limit cache (oldest entries are evicted)
+    max-entries: 1000
+    # Time window for rate-limiting, in seconds
+    window-seconds: 15
   # Per-action enable flags. commands / scripts are OFF by default and, when enabled,
   # restricted to the exact command-name / script-file allowlists below (fail-closed).
   actions:

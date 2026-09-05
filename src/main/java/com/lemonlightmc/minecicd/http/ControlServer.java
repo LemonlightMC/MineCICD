@@ -1,6 +1,7 @@
 package com.lemonlightmc.minecicd.http;
 
 import com.lemonlightmc.minecicd.MineCICD;
+import com.lemonlightmc.minecicd.MineCICDConfig.Control;
 import com.lemonlightmc.minecicd.git.CommitActions.Action;
 import com.lemonlightmc.minecicd.http.ControlRequest.ParseException;
 import com.lemonlightmc.minecicd.util.Ids;
@@ -54,31 +55,27 @@ public class ControlServer {
     private final Delegate delegate;
     private final SSLContext sslContext;
     private final long maxBodyBytes;
-    // M-07/S-08: bounded, expiring per-IP failure counter for rate limiting
-    private final FailureLimiter failureLimiter;
+    private final RateLimiter rateLimiter;
     private static final int MAX_HEADER_BYTES = 4096;
     private static final int MAX_EXCHANGES_PER_REQUEST = 4;
     private static final long SSE_IDLE_TIMEOUT_MS = 60_000L;
-    private static final int MAX_FAILURE_ENTRIES = 10_000;
-    private static final long FAILURE_WINDOW_MS = 10_000L;
 
     private HttpServer server;
     private ExecutorService httpExecutor;
     private ScheduledExecutorService failurePurger;
 
-    public ControlServer(final MineCICD plugin, final String host, final int port, final String path, final String secret,
-            final ControlSecurity security, final Delegate delegate, final SSLContext sslContext,
-            final long maxBodyBytes) {
+    public ControlServer(final MineCICD plugin, final Control config,
+            final ControlSecurity security, final Delegate delegate, final SSLContext sslContext) {
         this.plugin = plugin;
-        this.host = host == null || host.isBlank() ? "0.0.0.0" : host;
-        this.port = port;
-        this.path = normalizePath(path);
-        this.secret = secret;
+        this.host = config.host() == null || config.host().isBlank() ? "0.0.0.0" : config.host();
+        this.port = config.port();
+        this.path = normalizePath(config.path());
+        this.secret = config.secret();
         this.security = security;
         this.delegate = delegate;
         this.sslContext = sslContext;
-        this.maxBodyBytes = maxBodyBytes;
-        this.failureLimiter = new FailureLimiter(MAX_FAILURE_ENTRIES, FAILURE_WINDOW_MS);
+        this.maxBodyBytes = config.maxBodyBytes();
+        this.rateLimiter = new RateLimiter(config.rateLimit());
     }
 
     private static String normalizePath(String p) {
@@ -111,7 +108,7 @@ public class ControlServer {
             failurePurger = Threads.scheduledThreadExecutor("minecicd-failure-purge");
             failurePurger.scheduleWithFixedDelay(() -> {
                 try {
-                    failureLimiter.purgeExpired(System.currentTimeMillis());
+                    rateLimiter.purgeExpired(System.currentTimeMillis());
                 } catch (final Exception e) {
                     plugin.getLogger().warning("Failure cache purge error: " + e.getMessage());
                 }
@@ -189,7 +186,7 @@ public class ControlServer {
             return null;
         }
         // rate limiting
-        if (isRateLimited(exchange)) {
+        if (rateLimiter.isRateLimited(clientIp(exchange), System.currentTimeMillis())) {
             respond(exchange, 429, "{\"error\":\"Too many requests\"}");
             return null;
         }
@@ -224,8 +221,9 @@ public class ControlServer {
         // authenticate
         try {
             authenticate(exchange, reqeustId, body);
+            rateLimiter.recordRequest(clientIp(exchange), System.currentTimeMillis());
         } catch (final ControlSecurity.RejectException e) {
-            recordFailure(exchange);
+            rateLimiter.recordFailure(clientIp(exchange), System.currentTimeMillis());
             respond(exchange, 401, "{\"error\":\"Unauthorized\"}");
             return;
         }
@@ -235,6 +233,9 @@ public class ControlServer {
         final long startNano = System.nanoTime();
         try {
             final byte[] body = preprocessRequest(exchange, "POST", true);
+            if (body == null) {
+                return;
+            }
 
             // parse request from body
             ControlRequest request;
@@ -301,7 +302,9 @@ public class ControlServer {
 
     private void handleStream(final HttpExchange exchange) {
         final byte[] body = preprocessRequest(exchange, "POST", false);
-
+        if (body == null) {
+            return;
+        }
         final String requestId = query(exchange, "requestId");
         postprocess(exchange, requestId, body);
 
@@ -364,6 +367,9 @@ public class ControlServer {
 
     private void handleStatus(final HttpExchange exchange) {
         final byte[] body = preprocessRequest(exchange, "GET", false);
+        if (body == null) {
+            return;
+        }
 
         final String requestId = query(exchange, "requestId");
         postprocess(exchange, requestId, body);
@@ -469,14 +475,6 @@ public class ControlServer {
             }
         }
         return false;
-    }
-
-    private boolean isRateLimited(final HttpExchange exchange) {
-        return failureLimiter.isRateLimited(clientIp(exchange), System.currentTimeMillis());
-    }
-
-    private void recordFailure(final HttpExchange exchange) {
-        failureLimiter.recordFailure(clientIp(exchange), System.currentTimeMillis());
     }
 
     private static String clientIp(final HttpExchange exchange) {

@@ -32,7 +32,8 @@ public class ControlRequest {
     }
 
     public static ControlRequest parse(String body) {
-        // M-08: mitigate deep-nesting JSON bomb within 65KB - reject depth > 64 outside strings
+        // mitigate deep-nesting JSON bomb within 65KB - reject depth > 64 outside
+        // strings
         if (body != null) {
             int depth = 0, maxDepth = 0;
             boolean inString = false;
@@ -56,8 +57,10 @@ public class ControlRequest {
                 }
                 if (c == '{' || c == '[') {
                     depth++;
-                    if (depth > maxDepth) maxDepth = depth;
-                    if (maxDepth > 64) throw new ParseException("JSON too deeply nested");
+                    if (depth > maxDepth)
+                        maxDepth = depth;
+                    if (maxDepth > 64)
+                        throw new ParseException("JSON too deeply nested");
                 } else if (c == '}' || c == ']') {
                     depth = Math.max(0, depth - 1);
                 }

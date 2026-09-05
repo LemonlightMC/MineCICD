@@ -6,7 +6,6 @@ import com.lemonlightmc.minecicd.git.CommitActions.ActionType;
 import com.lemonlightmc.minecicd.git.GitService;
 import com.lemonlightmc.minecicd.http.ControlSecurity;
 import com.lemonlightmc.minecicd.http.ControlServer;
-import com.lemonlightmc.minecicd.http.ControlTls;
 import com.lemonlightmc.minecicd.messaging.Messages;
 import com.lemonlightmc.minecicd.pending.PendingStore;
 import com.lemonlightmc.minecicd.scripts.ScriptManager;
@@ -20,6 +19,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.nio.file.Path;
+
+import javax.net.ssl.SSLContext;
 
 public final class MineCICD extends JavaPlugin {
 
@@ -122,9 +123,9 @@ public final class MineCICD extends JavaPlugin {
                 actionFlags(control.actions()),
                 control.actions().commandAllow(),
                 control.actions().scriptAllow());
-        var ssl = ControlTls.build(control.tls().keystore(), control.tls().password(), control.tls().enabled());
-        ControlServer server = new ControlServer(this, control.host(), control.port(), control.path(), control.secret(),
-                security, cicdService, ssl, control.maxBodyBytes());
+        SSLContext ssl = ControlSecurity.buildSslContext(control.tls().keystore(), control.tls().password(),
+                control.tls().enabled());
+        ControlServer server = new ControlServer(this, control, security, cicdService, ssl);
 
         if (server.start()) {
             controlActive = true;
