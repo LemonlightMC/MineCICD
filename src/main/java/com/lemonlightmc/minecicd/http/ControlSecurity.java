@@ -1,5 +1,6 @@
 package com.lemonlightmc.minecicd.http;
 
+import com.lemonlightmc.minecicd.MineCICDConfig;
 import com.lemonlightmc.minecicd.git.CommitActions.Action;
 import com.lemonlightmc.minecicd.git.CommitActions.ActionType;
 
@@ -12,10 +13,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.security.KeyStore;
 import java.security.MessageDigest;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -34,38 +32,31 @@ public class ControlSecurity {
 
     private final long replayWindowSeconds;
     private static final int MAX_NONCES = 10_000;
-    private final Map<ActionType, Boolean> enabled;
-    private final Set<String> allowedCommands;
-    private final Set<String> allowedScripts;
+    private final MineCICDConfig.Actions actionsConfig;
     private final boolean allowPullPush;
 
     public static class RejectException extends RuntimeException {
-        public RejectException(String message) {
+        public RejectException(final String message) {
             super(message);
         }
     }
 
-    public ControlSecurity(long replayWindowSeconds,
-            Map<ActionType, Boolean> enabled,
-            List<String> allowedCommands,
-            List<String> allowedScripts) {
+    public ControlSecurity(final long replayWindowSeconds, final MineCICDConfig.Actions actionsConfig) {
         this.replayWindowSeconds = replayWindowSeconds;
-        this.enabled = new HashMap<>(enabled);
-        this.allowedCommands = new HashSet<>(allowedCommands);
-        this.allowedScripts = new HashSet<>(allowedScripts);
+        this.actionsConfig = actionsConfig;
         this.allowPullPush = true;
     }
 
     public boolean verify() {
-        return enabled != null && enabled.containsKey(ActionType.PULL);
+        return actionsConfig.allowedActions().contains(ActionType.PULL);
     }
 
     /**
      * Verifies the HMAC in constant time. Throws {@link RejectException} on
      * failure.
      */
-    public void authenticate(String secret, String timestampHeader, String nonceHeader,
-            String requestIdHeader, String providedMac, byte[] body) {
+    public void authenticate(final String secret, final String timestampHeader, final String nonceHeader,
+            final String requestIdHeader, final String providedMac, final byte[] body) {
         if (secret == null || secret.isEmpty()) {
             throw new RejectException("Control API is not configured");
         }
@@ -75,11 +66,11 @@ public class ControlSecurity {
         long timestamp;
         try {
             timestamp = Long.parseLong(timestampHeader);
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new RejectException("Invalid timestamp");
         }
-        long now = System.currentTimeMillis() / 1000L;
-        // L-02: distinguish future vs past instead of Math.abs
+        final long now = System.currentTimeMillis() / 1000L;
+        // distinguish future vs past instead of Math.abs
         if (timestamp > now + replayWindowSeconds) {
             throw new RejectException("Timestamp too far in future");
         }
@@ -98,10 +89,10 @@ public class ControlSecurity {
             throw new RejectException("Nonce cache full");
         }
         // hash body to make canonical non-ambiguous on '|' in body
-        String bodyHash = sha256Hex(body);
-        String canonical = timestamp + "|" + nonceHeader + "|" + requestIdHeader + "|" + bodyHash;
-        byte[] expected = hmac(secret, canonical.getBytes(StandardCharsets.UTF_8));
-        byte[] actual = hexDecode(providedMac);
+        final String bodyHash = sha256Hex(body);
+        final String canonical = timestamp + "|" + nonceHeader + "|" + requestIdHeader + "|" + bodyHash;
+        final byte[] expected = hmac(secret, canonical.getBytes(StandardCharsets.UTF_8));
+        final byte[] actual = hexDecode(providedMac);
         if (actual == null || actual.length != expected.length) {
             throw new RejectException("Invalid signature");
         }
@@ -109,41 +100,40 @@ public class ControlSecurity {
             throw new RejectException("Invalid signature");
         }
         // Replay guard: fail if nonce already seen within window
-        Long prev = seenNonces.putIfAbsent(nonceHeader, now);
-        if (prev != null) {
+        if (seenNonces.putIfAbsent(nonceHeader, now) != null) {
             throw new RejectException("Replayed nonce");
         }
     }
 
-    public static byte[] hmac(String secret, byte[] data) {
+    public static byte[] hmac(final String secret, final byte[] data) {
         try {
-            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            final javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
             mac.init(new javax.crypto.spec.SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
             return mac.doFinal(data);
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new IllegalStateException("HMAC failure", e);
         }
     }
 
-    public static String hex(byte[] bytes) {
-        StringBuilder sb = new StringBuilder(bytes.length * 2);
-        for (byte b : bytes) {
+    public static String hex(final byte[] bytes) {
+        final StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (final byte b : bytes) {
             sb.append(String.format("%02x", b));
         }
         return sb.toString();
     }
 
-    private static byte[] hexDecode(String hex) {
+    private static byte[] hexDecode(final String hex) {
         if (hex.length() % 2 != 0) {
             return null;
         }
         try {
-            byte[] out = new byte[hex.length() / 2];
+            final byte[] out = new byte[hex.length() / 2];
             for (int i = 0; i < out.length; i++) {
                 out[i] = (byte) Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
             }
             return out;
-        } catch (NumberFormatException e) {
+        } catch (final NumberFormatException e) {
             return null;
         }
     }
@@ -153,24 +143,23 @@ public class ControlSecurity {
      * commands/scripts, allowed by its exact-name allowlist.
      * Also validates script names against a safe pattern.
      */
-    public void validateActions(List<Action> actions) {
-        for (Action action : actions) {
-            Boolean flag = enabled.get(action.type());
-            if (flag == null || !flag) {
+    public void validateActions(final List<Action> actions) {
+        for (final Action action : actions) {
+            if (actionsConfig.allowedActions().contains(action.type())) {
                 throw new RejectException("Action not enabled: " + action);
             }
             switch (action.type()) {
                 case COMMAND -> {
-                    String name = firstToken(action.argument());
-                    if (name == null || !allowedCommands.contains(name)) {
+                    final String name = firstToken(action.argument());
+                    if (name == null || !actionsConfig.allowedCommands().contains(name)) {
                         throw new RejectException("Command not allowed: " + action.argument());
                     }
                 }
                 case SCRIPT -> {
                     // A script is allowed only if it is on the exact-name allowlist AND its name
                     // matches the safe pattern (no path traversal / separators).
-                    String name = action.argument();
-                    if (!isValidScriptName(name) || !allowedScripts.contains(name)) {
+                    final String name = action.argument();
+                    if (!isValidScriptName(name) || !actionsConfig.allowedScripts().contains(name)) {
                         throw new RejectException("Script not allowed: " + name);
                     }
                 }
@@ -180,7 +169,7 @@ public class ControlSecurity {
         }
     }
 
-    public static boolean isValidScriptName(String name) {
+    public static boolean isValidScriptName(final String name) {
         if (name == null || name.isEmpty() || name.length() > 64) {
             return false;
         }
@@ -188,7 +177,7 @@ public class ControlSecurity {
             return false;
         }
         for (int i = 0; i < name.length(); i++) {
-            char c = name.charAt(i);
+            final char c = name.charAt(i);
             if (!(Character.isLetterOrDigit(c) || c == '-' || c == '_' || c == '.')) {
                 return false;
             }
@@ -201,19 +190,19 @@ public class ControlSecurity {
             return null;
         }
         command = command.trim();
-        int space = command.indexOf(' ');
+        final int space = command.indexOf(' ');
         return space < 0 ? command : command.substring(0, space);
     }
 
-    private void pruneNonces(long nowSeconds) {
+    private void pruneNonces(final long nowSeconds) {
         seenNonces.entrySet().removeIf(e -> nowSeconds - e.getValue() > replayWindowSeconds + 60);
     }
 
-    private static String sha256Hex(byte[] data) {
+    private static String sha256Hex(final byte[] data) {
         try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            final MessageDigest md = MessageDigest.getInstance("SHA-256");
             return hex(md.digest(data == null ? new byte[0] : data));
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
     }
@@ -222,7 +211,7 @@ public class ControlSecurity {
      * Builds an SSLContext from a keystore (JKS or PKCS12). Returns null if TLS is
      * disabled. Restricts protocols to TLS v1.2/1.3
      */
-    public static SSLContext buildSslContext(String keystorePath, String password, boolean enabled) {
+    public static SSLContext buildSslContext(final String keystorePath, final String password, final boolean enabled) {
         if (!enabled) {
             return null;
         }
@@ -231,30 +220,30 @@ public class ControlSecurity {
         }
         // warn if keystore file is world-readable
         try {
-            Path p = Path.of(keystorePath);
+            final Path p = Path.of(keystorePath);
             if (!Files.exists(p)) {
-                Set<PosixFilePermission> perms = Files.getPosixFilePermissions(p);
+                final Set<PosixFilePermission> perms = Files.getPosixFilePermissions(p);
                 if (perms.contains(PosixFilePermission.OTHERS_READ) || perms.contains(PosixFilePermission.GROUP_READ)) {
                     System.err.println(
                             "[MineCICD] Warning: keystore " + keystorePath + " is world-readable; run chmod 600");
                 }
             }
-        } catch (Exception ignored) {
+        } catch (final Exception ignored) {
         }
 
-        char[] pass = password.toCharArray();
+        final char[] pass = password.toCharArray();
         try {
-            KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+            final KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
             try (InputStream in = new FileInputStream(keystorePath)) {
                 keyStore.load(in, pass);
             }
-            KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+            final KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
             kmf.init(keyStore, pass);
-            SSLContext context = SSLContext.getInstance("TLS");
+            final SSLContext context = SSLContext.getInstance("TLS");
             context.init(kmf.getKeyManagers(), null, null);
             // Protocol restriction to TLS v1.2/1.3 is enforced in the HttpsConfigurator
             return context;
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new IllegalStateException("Unable to configure TLS: " + e.getMessage(), e);
         } finally {
             Arrays.fill(pass, '\0');

@@ -86,7 +86,6 @@ public class CicdService implements ControlServer.Delegate {
         if (commits == null || commits.isEmpty()) {
             return;
         }
-        ControlSecurity policy = buildPolicy();
         for (org.eclipse.jgit.revwalk.RevCommit commit : commits) {
             for (Action action : CommitActions.parseCommitMessage(commit)) {
                 if (action.type() == ActionType.PULL) {
@@ -94,7 +93,7 @@ public class CicdService implements ControlServer.Delegate {
                 }
                 // C-02: gate commit actions through same policy as HTTP control API
                 try {
-                    policy.validateActions(List.of(action));
+                    plugin.security().validateActions(List.of(action));
                 } catch (ControlSecurity.RejectException e) {
                     plugin.getLogger().warning(
                             "Skipping commit action disallowed by policy: " + action + " (" + e.getMessage() + ")");
@@ -104,20 +103,6 @@ public class CicdService implements ControlServer.Delegate {
                 executeAction(action, null, null);
             }
         }
-    }
-
-    private ControlSecurity buildPolicy() {
-        var control = plugin.config().control();
-        var actions = control.actions();
-        java.util.Map<ActionType, Boolean> flags = new java.util.HashMap<>();
-        flags.put(ActionType.PULL, actions.pull());
-        flags.put(ActionType.PUSH, actions.push());
-        flags.put(ActionType.RESTART, actions.restart());
-        flags.put(ActionType.GLOBAL_RELOAD, actions.globalReload());
-        flags.put(ActionType.RELOAD_PLUGIN, actions.reloadPlugins());
-        flags.put(ActionType.COMMAND, actions.commands());
-        flags.put(ActionType.SCRIPT, actions.scripts());
-        return new ControlSecurity(control.replayWindowSeconds(), flags, actions.commandAllow(), actions.scriptAllow());
     }
 
     public CompletableFuture<Boolean> push(CommandSender sender, String message) {

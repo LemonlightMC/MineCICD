@@ -2,7 +2,6 @@ package com.lemonlightmc.minecicd;
 
 import com.lemonlightmc.minecicd.bossbar.BossBars;
 import com.lemonlightmc.minecicd.command.MineCICDCommand;
-import com.lemonlightmc.minecicd.git.CommitActions.ActionType;
 import com.lemonlightmc.minecicd.git.GitService;
 import com.lemonlightmc.minecicd.http.ControlSecurity;
 import com.lemonlightmc.minecicd.http.ControlServer;
@@ -20,8 +19,6 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.io.File;
 import java.nio.file.Path;
 
-import javax.net.ssl.SSLContext;
-
 public final class MineCICD extends JavaPlugin {
 
     private MineCICDConfig config;
@@ -32,6 +29,7 @@ public final class MineCICD extends JavaPlugin {
     private SecretManager secretManager;
     private PendingStore pendingStore;
     private CicdService cicdService;
+    private ControlSecurity security;
     private ControlServer controlServer;
     private volatile boolean controlActive;
     private volatile String controlAddress = "disabled";
@@ -118,35 +116,20 @@ public final class MineCICD extends JavaPlugin {
         if (control.secret().getBytes(java.nio.charset.StandardCharsets.UTF_8).length < 32) {
             getLogger().warning("control.secret is weaker than 32 bytes; use a stronger secret.");
         }
-        ControlSecurity security = new ControlSecurity(
+        security = new ControlSecurity(
                 control.replayWindowSeconds(),
-                actionFlags(control.actions()),
-                control.actions().commandAllow(),
-                control.actions().scriptAllow());
-        SSLContext ssl = ControlSecurity.buildSslContext(control.tls().keystore(), control.tls().password(),
-                control.tls().enabled());
-        ControlServer server = new ControlServer(this, control, security, cicdService, ssl);
+                control.actions());
+        ControlServer server = new ControlServer(this, control);
 
         if (server.start()) {
             controlActive = true;
-            controlAddress = "http" + (ssl != null ? "s" : "") + "://" + control.host() + ":" + control.port()
+            controlAddress = "http" + (server.hasSslContext() ? "s" : "") + "://" + control.host() + ":"
+                    + control.port()
                     + "/" + control.path();
         } else {
             controlActive = true;
             controlAddress = "failed to start";
         }
-    }
-
-    private java.util.Map<ActionType, Boolean> actionFlags(MineCICDConfig.Actions actions) {
-        java.util.Map<ActionType, Boolean> flags = new java.util.HashMap<>();
-        flags.put(ActionType.PULL, actions.pull());
-        flags.put(ActionType.PUSH, actions.push());
-        flags.put(ActionType.RESTART, actions.restart());
-        flags.put(ActionType.GLOBAL_RELOAD, actions.globalReload());
-        flags.put(ActionType.RELOAD_PLUGIN, actions.reloadPlugins());
-        flags.put(ActionType.COMMAND, actions.commands());
-        flags.put(ActionType.SCRIPT, actions.scripts());
-        return flags;
     }
 
     private void saveDefaultExampleScript() {
@@ -194,6 +177,10 @@ public final class MineCICD extends JavaPlugin {
 
     public CicdService cicdService() {
         return cicdService;
+    }
+
+    public ControlSecurity security() {
+        return security;
     }
 
     public ControlServer controlServer() {

@@ -3,6 +3,8 @@ package com.lemonlightmc.minecicd;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 
+import com.lemonlightmc.minecicd.git.CommitActions.ActionType;
+
 import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -37,10 +39,34 @@ public class MineCICDConfig {
             long windowSeconds) {
     }
 
-    public record Actions(
-            boolean pull, boolean push, boolean restart, boolean globalReload,
-            boolean reloadPlugins, boolean commands, List<String> commandAllow,
-            boolean scripts, List<String> scriptAllow) {
+    public record Actions(EnumSet<ActionType> allowedActions, Set<String> allowedCommands, Set<String> allowedScripts) {
+
+        public static Actions from(ConfigurationSection section) {
+            EnumSet<ActionType> set = EnumSet.noneOf(ActionType.class);
+            if (section.getBoolean("pull", true)) {
+                set.add(ActionType.PULL);
+            }
+            if (section.getBoolean("push", true)) {
+                set.add(ActionType.PUSH);
+            }
+            if (section.getBoolean("restart", true)) {
+                set.add(ActionType.RESTART);
+            }
+            if (section.getBoolean("global-reload", false)) {
+                set.add(ActionType.GLOBAL_RELOAD);
+            }
+            if (section.getBoolean("reload-plugins", true)) {
+                set.add(ActionType.RELOAD_PLUGIN);
+            }
+            if (section.getBoolean("scripts.enabled", true)) {
+                set.add(ActionType.SCRIPT);
+            }
+            if (section.getBoolean("commands.enabled", true)) {
+                set.add(ActionType.COMMAND);
+            }
+            return new Actions(set, Set.copyOf(section.getStringList("commands.allow")),
+                    Set.copyOf(section.getStringList("scripts.allow")));
+        }
     }
 
     public record Control(String host, int port, String path, String secret, Tls tls,
@@ -173,7 +199,6 @@ public class MineCICDConfig {
 
         ConfigurationSection controlSection = config.getConfigurationSection("control");
         ConfigurationSection tls = controlSection.getConfigurationSection("tls");
-        ConfigurationSection act = controlSection.getConfigurationSection("actions");
         this.control = new Control(
                 controlSection.getString("host", "127.0.0.1"),
                 controlSection.getInt("port", 0),
@@ -184,16 +209,7 @@ public class MineCICDConfig {
                 new ArrayList<>(controlSection.getStringList("branches")),
                 controlSection.getLong("max-body-bytes", 65536),
                 controlSection.getLong("replay-window-seconds", 300),
-                new Actions(
-                        act.getBoolean("pull", true),
-                        act.getBoolean("push", true),
-                        act.getBoolean("restart", true),
-                        act.getBoolean("global-reload", false),
-                        act.getBoolean("reload-plugins", true),
-                        act.getBoolean("commands.enabled", false),
-                        act.getStringList("commands.allow"),
-                        act.getBoolean("scripts.enabled", false),
-                        act.getStringList("scripts.allow")),
+                Actions.from(controlSection.getConfigurationSection("actions")),
                 new RateLimit(
                         controlSection.getBoolean("rate-limit.enabled", true),
                         controlSection.getBoolean("rate-limit.failures-only", true),

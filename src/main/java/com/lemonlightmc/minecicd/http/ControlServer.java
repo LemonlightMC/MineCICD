@@ -51,8 +51,6 @@ public class ControlServer {
     private final int port;
     private final String path;
     private final String secret;
-    private final ControlSecurity security;
-    private final Delegate delegate;
     private final SSLContext sslContext;
     private final long maxBodyBytes;
     private final RateLimiter rateLimiter;
@@ -64,16 +62,18 @@ public class ControlServer {
     private ExecutorService httpExecutor;
     private ScheduledExecutorService failurePurger;
 
-    public ControlServer(final MineCICD plugin, final Control config,
-            final ControlSecurity security, final Delegate delegate, final SSLContext sslContext) {
+    public ControlServer(final MineCICD plugin, final Control config) {
         this.plugin = plugin;
         this.host = config.host() == null || config.host().isBlank() ? "0.0.0.0" : config.host();
         this.port = config.port();
         this.path = normalizePath(config.path());
         this.secret = config.secret();
-        this.security = security;
-        this.delegate = delegate;
-        this.sslContext = sslContext;
+        if (config.tls().enabled()) {
+            this.sslContext = ControlSecurity.buildSslContext(config.tls().keystore(), config.tls().password(),
+                    config.tls().enabled());
+        } else {
+            this.sslContext = null;
+        }
         this.maxBodyBytes = config.maxBodyBytes();
         this.rateLimiter = new RateLimiter(config.rateLimit());
     }
@@ -90,6 +90,10 @@ public class ControlServer {
             p = p.substring(0, p.length() - 1);
         }
         return p;
+    }
+
+    public boolean hasSslContext() {
+        return sslContext != null;
     }
 
     public boolean start() {
@@ -170,7 +174,7 @@ public class ControlServer {
 
     private void authenticate(final HttpExchange exchange, final String requestId, final byte[] body) {
         final Headers headers = exchange.getRequestHeaders();
-        security.authenticate(
+        plugin.security().authenticate(
                 secret,
                 headers.getFirst("X-MineCICD-Timestamp"),
                 headers.getFirst("X-MineCICD-Nonce"),
@@ -249,7 +253,7 @@ public class ControlServer {
 
             // validate actions
             try {
-                security.validateActions(request.actions());
+                plugin.security().validateActions(request.actions());
             } catch (final ControlSecurity.RejectException e) {
                 respond(exchange, 403, "{\"error\":\"" + jsonEscape(e.getMessage()) + "\"}");
                 return;
@@ -265,11 +269,11 @@ public class ControlServer {
                 respond(exchange, 403, "{\"error\":\"Branch not allowed\"}");
                 return;
             }
-            if (!delegate.tryAcquireInFlight(request.requestId())) {
+            if (!plugin.cicdService().tryAcquireInFlight(request.requestId())) {
                 respond(exchange, 409, "{\"error\":\"Another request is already in flight\"}");
                 return;
             }
-            delegate.acceptRequest(request.requestId(), request.actions(), branch);
+            plugin.cicdService().acceptRequest(request.requestId(), request.actions(), branch);
             respond(exchange, 202, "{\"accepted\":true,\"requestId\":\"" + jsonEscape(request.requestId()) + "\"}");
 
         } catch (final Exception e) {
@@ -309,7 +313,7 @@ public class ControlServer {
         postprocess(exchange, requestId, body);
 
         // cap exchanges per requestId
-        final ProgressStream existing = delegate.progressStream(requestId);
+        final ProgressStream existing = plugin.cicdService().progressStream(requestId);
         if (existing != null && existing.exchanges().size() >= MAX_EXCHANGES_PER_REQUEST) {
             respond(exchange, 429, "{\"error\":\"Too many streams\"}");
             return;
@@ -324,7 +328,7 @@ public class ControlServer {
         } catch (final IOException e) {
             return;
         }
-        ProgressStream stream = delegate.progressStream(requestId);
+        ProgressStream stream = plugin.cicdService().progressStream(requestId);
         if (stream == null) {
             stream = new ProgressStream();
         }
@@ -346,7 +350,7 @@ public class ControlServer {
                         activeStream.close();
                         break;
                     }
-                    final int count = delegate.controlStatus().eventCount(requestId);
+                    final int count = plugin.cicdService().controlStatus().eventCount(requestId);
                     if (count > current) {
                         current = count;
                         start = System.currentTimeMillis();
@@ -375,7 +379,7 @@ public class ControlServer {
         postprocess(exchange, requestId, body);
 
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
-        final ControlStatus.Entry entry = delegate.controlStatus().get(requestId);
+        final ControlStatus.Entry entry = plugin.cicdService().controlStatus().get(requestId);
         if (entry == null) {
             respond(exchange, 404, "{\"error\":\"Unknown requestId\"}");
             return;
