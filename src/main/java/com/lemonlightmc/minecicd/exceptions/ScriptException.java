@@ -1,11 +1,11 @@
 package com.lemonlightmc.minecicd.exceptions;
 
 public class ScriptException extends RuntimeException {
-  public ScriptException(String message) {
+  public ScriptException(final String message) {
     super(message);
   }
 
-  public ScriptException(String message, Throwable cause) {
+  public ScriptException(final String message, final Throwable cause) {
     super(message, cause);
   }
 }

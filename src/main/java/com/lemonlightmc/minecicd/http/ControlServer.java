@@ -3,7 +3,7 @@ package com.lemonlightmc.minecicd.http;
 import com.lemonlightmc.minecicd.MineCICD;
 import com.lemonlightmc.minecicd.MineCICDConfig.Control;
 import com.lemonlightmc.minecicd.git.CommitActions.Action;
-import com.lemonlightmc.minecicd.http.ControlRequest.ParseException;
+import com.lemonlightmc.minecicd.exceptions.ParseException;
 import com.lemonlightmc.minecicd.util.Ids;
 import com.lemonlightmc.minecicd.util.Threads;
 import com.sun.net.httpserver.Headers;
