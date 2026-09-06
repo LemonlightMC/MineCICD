@@ -63,7 +63,7 @@ public final class MineCICD extends JavaPlugin {
 
         getServer().getPluginManager().registerEvents(new Listener() {
             @EventHandler
-            public void onTickStart(ServerTickStartEvent event) {
+            public void onTickStart(final ServerTickStartEvent event) {
                 if (!resumed) {
                     resumed = true;
                     getServer().getScheduler().runTaskLater(MineCICD.this, () -> cicdService.onServerStarted(), 20L);
@@ -100,7 +100,7 @@ public final class MineCICD extends JavaPlugin {
     }
 
     private void startControlServer() {
-        var control = config.control();
+        final var control = config.control();
         if (control.port() <= 0) {
             controlActive = false;
             controlAddress = "disabled";
@@ -119,7 +119,7 @@ public final class MineCICD extends JavaPlugin {
         security = new ControlSecurity(
                 control.replayWindowSeconds(),
                 control.actions());
-        ControlServer server = new ControlServer(this, control);
+        final ControlServer server = new ControlServer(this, control);
 
         if (server.start()) {
             controlActive = true;
@@ -133,11 +133,11 @@ public final class MineCICD extends JavaPlugin {
     }
 
     private void saveDefaultExampleScript() {
-        File scriptsDir = new File(getDataFolder(), "scripts");
+        final File scriptsDir = new File(getDataFolder(), "scripts");
         if (!scriptsDir.exists()) {
             scriptsDir.mkdirs();
         }
-        File example = new File(scriptsDir, "example_script.sh");
+        final File example = new File(scriptsDir, "example_script.sh");
         if (!example.exists() && getResource("example_script.sh") != null) {
             saveResource("example_script.sh", false);
         }

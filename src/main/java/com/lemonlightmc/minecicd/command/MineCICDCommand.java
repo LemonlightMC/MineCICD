@@ -20,7 +20,7 @@ public class MineCICDCommand {
     private final CicdService service;
     private final Messages messages;
 
-    public MineCICDCommand(CicdService service, Messages messages) {
+    public MineCICDCommand(final CicdService service, final Messages messages) {
         this.service = service;
         this.messages = messages;
     }
@@ -88,7 +88,7 @@ public class MineCICDCommand {
                         .requires(req("minecicd.script"))
                         .then(Commands.argument("name", StringArgumentType.greedyString())
                                 .suggests((ctx, builder) -> {
-                                    for (String s : service.scriptNames()) {
+                                    for (final String s : service.scriptNames()) {
                                         builder.suggest(s);
                                     }
                                     return builder.buildFuture();
@@ -154,18 +154,18 @@ public class MineCICDCommand {
                 .build();
     }
 
-    private static CommandSender sender(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) {
+    private static CommandSender sender(final com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) {
         return ctx.getSource().getSender();
     }
 
-    private Predicate<CommandSourceStack> req(String permission) {
+    private Predicate<CommandSourceStack> req(final String permission) {
         return source -> {
-            CommandSender sender = source.getSender();
+            final CommandSender sender = source.getSender();
             return sender != null && (sender.hasPermission(permission) || sender.hasPermission("minecicd.*"));
         };
     }
 
-    private int logPage(CommandSender sender, int page) {
+    private int logPage(final CommandSender sender, final int page) {
         service.log(sender, page).thenAccept(p -> {
             if (p == null || p.entries().isEmpty()) {
                 return;
@@ -173,7 +173,7 @@ public class MineCICDCommand {
             messages.sendRaw(sender, messages.get("log-list-header", Map.of(
                     "page", String.valueOf(p.page()),
                     "maxPage", String.valueOf(p.maxPage()))));
-            for (Results.LogEntry entry : p.entries()) {
+            for (final Results.LogEntry entry : p.entries()) {
                 messages.sendRaw(sender, messages.get("log-list-line", Map.of(
                         "date", entry.date(), "revision", entry.revision(),
                         "author", entry.author(), "message", Messages.escape(entry.message()))));
@@ -183,22 +183,22 @@ public class MineCICDCommand {
         return Command.SINGLE_SUCCESS;
     }
 
-    private int showCommit(CommandSender sender, String ref) {
+    private int showCommit(final CommandSender sender, final String ref) {
         service.commit(sender, ref).thenAccept(entry -> {
             if (entry == null) {
                 messages.send(sender, "log-invalid-commit");
                 return;
             }
-            messages.sendList(sender, 
+            messages.sendList(sender,
                     "log-single-commit", Map.of(
-                        "revision", entry.revision(), "author", entry.author(),
-                        "date", entry.date(), "message", Messages.escape(entry.message()),
-                        "changes", String.join(", ", entry.changes())));
+                            "revision", entry.revision(), "author", entry.author(),
+                            "date", entry.date(), "message", Messages.escape(entry.message()),
+                            "changes", String.join(", ", entry.changes())));
         });
         return Command.SINGLE_SUCCESS;
     }
 
-    private int printStatus(CommandSender sender) {
+    private int printStatus(final CommandSender sender) {
         service.status(sender).thenAccept(s -> {
             if (s == null) {
                 return;
@@ -213,13 +213,13 @@ public class MineCICDCommand {
         return Command.SINGLE_SUCCESS;
     }
 
-    private int printDiff(CommandSender sender, boolean remote) {
+    private int printDiff(final CommandSender sender, final boolean remote) {
         service.diff(sender, remote).thenAccept(changes -> {
             messages.sendRaw(sender, messages.get(remote ? "diff-remote-header" : "diff-local-header", Map.of()));
             if (changes == null || changes.isEmpty()) {
                 messages.sendRaw(sender, messages.get("diff-no-changes", Map.of()));
             } else {
-                for (String change : changes) {
+                for (final String change : changes) {
                     messages.sendRaw(sender, messages.get("diff-line", Map.of("change", Messages.escape(change))));
                 }
             }

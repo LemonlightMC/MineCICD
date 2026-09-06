@@ -1,10 +1,10 @@
 package com.lemonlightmc.minecicd;
 
+import com.lemonlightmc.minecicd.exceptions.GitException;
 import com.lemonlightmc.minecicd.exceptions.ScriptException;
 import com.lemonlightmc.minecicd.git.CommitActions;
 import com.lemonlightmc.minecicd.git.CommitActions.Action;
 import com.lemonlightmc.minecicd.git.CommitActions.ActionType;
-import com.lemonlightmc.minecicd.git.GitException;
 import com.lemonlightmc.minecicd.git.Results;
 import com.lemonlightmc.minecicd.http.ControlServer;
 import com.lemonlightmc.minecicd.http.ControlSecurity;
@@ -40,22 +40,22 @@ public class CicdService implements ControlServer.Delegate {
     private final Object resumeLock = new Object();
     private final AtomicReference<String> inFlight = new AtomicReference<>(null);
 
-    public CicdService(MineCICD plugin) {
+    public CicdService(final MineCICD plugin) {
         this.plugin = plugin;
         this.worker = Threads.singleDaemonWorker("minecicd-worker");
     }
 
-    public <T> CompletableFuture<T> enqueue(java.util.function.Supplier<T> task) {
+    public <T> CompletableFuture<T> enqueue(final java.util.function.Supplier<T> task) {
         return CompletableFuture.supplyAsync(task, worker);
     }
 
     // ------------------------------------------------------------------ commands
 
-    public CompletableFuture<Boolean> pull(CommandSender sender, boolean force) {
+    public CompletableFuture<Boolean> pull(final CommandSender sender, final boolean force) {
         return enqueue(() -> {
             try {
                 plugin.bossBars().show("pulling", Map.of());
-                Results.PullResult result = plugin.gitService().pull(force);
+                final Results.PullResult result = plugin.gitService().pull(force);
                 processCommitActions(result.commits());
                 if (result.initialized()) {
                     plugin.messages().send(sender, "pull-success");
@@ -70,11 +70,11 @@ public class CicdService implements ControlServer.Delegate {
                     plugin.bossBars().show("pulled-no-changes", Map.of());
                 }
                 return Boolean.TRUE;
-            } catch (GitException.PullAborted e) {
+            } catch (final GitException.PullAborted e) {
                 plugin.messages().send(sender, "pull-aborted");
                 plugin.bossBars().show("pull-aborted-changes", Map.of());
                 return Boolean.FALSE;
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 plugin.messages().send(sender, "pull-failed", Map.of("error", safeMessage(e)));
                 plugin.bossBars().show("pull-failed", Map.of());
                 return Boolean.FALSE;
@@ -82,19 +82,19 @@ public class CicdService implements ControlServer.Delegate {
         });
     }
 
-    private void processCommitActions(List<org.eclipse.jgit.revwalk.RevCommit> commits) {
+    private void processCommitActions(final List<org.eclipse.jgit.revwalk.RevCommit> commits) {
         if (commits == null || commits.isEmpty()) {
             return;
         }
-        for (org.eclipse.jgit.revwalk.RevCommit commit : commits) {
-            for (Action action : CommitActions.parseCommitMessage(commit)) {
+        for (final org.eclipse.jgit.revwalk.RevCommit commit : commits) {
+            for (final Action action : CommitActions.parseCommitMessage(commit)) {
                 if (action.type() == ActionType.PULL) {
                     continue;
                 }
                 // C-02: gate commit actions through same policy as HTTP control API
                 try {
                     plugin.security().validateActions(List.of(action));
-                } catch (ControlSecurity.RejectException e) {
+                } catch (final ControlSecurity.RejectException e) {
                     plugin.getLogger().warning(
                             "Skipping commit action disallowed by policy: " + action + " (" + e.getMessage() + ")");
                     continue;
@@ -105,11 +105,11 @@ public class CicdService implements ControlServer.Delegate {
         }
     }
 
-    public CompletableFuture<Boolean> push(CommandSender sender, String message) {
+    public CompletableFuture<Boolean> push(final CommandSender sender, final String message) {
         return enqueue(() -> {
             try {
                 plugin.bossBars().show("pushing", Map.of());
-                Results.PushResult result = plugin.gitService().push(message);
+                final Results.PushResult result = plugin.gitService().push(message);
                 if (result.hadChanges()) {
                     plugin.messages().send(sender, "push-success");
                     plugin.bossBars().show("pushed", Map.of());
@@ -118,7 +118,7 @@ public class CicdService implements ControlServer.Delegate {
                     plugin.messages().send(sender, "push-no-changes");
                 }
                 return Boolean.TRUE;
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 plugin.messages().send(sender, "push-failed", Map.of("error", safeMessage(e)));
                 plugin.bossBars().show("push-failed", Map.of());
                 return Boolean.FALSE;
@@ -126,14 +126,14 @@ public class CicdService implements ControlServer.Delegate {
         });
     }
 
-    public CompletableFuture<Boolean> add(CommandSender sender, String path) {
+    public CompletableFuture<Boolean> add(final CommandSender sender, final String path) {
         return enqueue(() -> {
             try {
-                int amount = plugin.gitService().addToTracking(path);
+                final int amount = plugin.gitService().addToTracking(path);
                 plugin.messages().send(sender, "add-success", Map.of("amount", String.valueOf(amount)));
                 plugin.bossBars().show("added", Map.of("amount", String.valueOf(amount)));
                 return Boolean.TRUE;
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 plugin.messages().send(sender, "add-failed", Map.of("error", safeMessage(e)));
                 plugin.bossBars().show("adding-failed", Map.of());
                 return Boolean.FALSE;
@@ -141,14 +141,14 @@ public class CicdService implements ControlServer.Delegate {
         });
     }
 
-    public CompletableFuture<Boolean> remove(CommandSender sender, String path) {
+    public CompletableFuture<Boolean> remove(final CommandSender sender, final String path) {
         return enqueue(() -> {
             try {
-                int amount = plugin.gitService().removeFromTracking(path);
+                final int amount = plugin.gitService().removeFromTracking(path);
                 plugin.messages().send(sender, "remove-success", Map.of("amount", String.valueOf(amount)));
                 plugin.bossBars().show("removed", Map.of("amount", String.valueOf(amount)));
                 return Boolean.TRUE;
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 plugin.messages().send(sender, "remove-failed", Map.of("error", safeMessage(e)));
                 plugin.bossBars().show("removing-failed", Map.of());
                 return Boolean.FALSE;
@@ -156,14 +156,14 @@ public class CicdService implements ControlServer.Delegate {
         });
     }
 
-    public CompletableFuture<Boolean> reset(CommandSender sender, String commit) {
+    public CompletableFuture<Boolean> reset(final CommandSender sender, final String commit) {
         return enqueue(() -> {
             try {
                 plugin.gitService().reset(commit);
                 plugin.messages().send(sender, "reset-success");
                 plugin.bossBars().show("reset", Map.of());
                 return Boolean.TRUE;
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 plugin.messages().send(sender, "reset-failed", Map.of("error", safeMessage(e)));
                 plugin.bossBars().show("reset-failed", Map.of());
                 return Boolean.FALSE;
@@ -171,14 +171,14 @@ public class CicdService implements ControlServer.Delegate {
         });
     }
 
-    public CompletableFuture<Boolean> revert(CommandSender sender, String commit) {
+    public CompletableFuture<Boolean> revert(final CommandSender sender, final String commit) {
         return enqueue(() -> {
             try {
                 plugin.gitService().revert(commit);
                 plugin.messages().send(sender, "revert-success");
                 plugin.bossBars().show("reverted", Map.of());
                 return Boolean.TRUE;
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 plugin.messages().send(sender, "revert-failed", Map.of("error", safeMessage(e)));
                 plugin.bossBars().show("revert-failed", Map.of());
                 return Boolean.FALSE;
@@ -186,15 +186,15 @@ public class CicdService implements ControlServer.Delegate {
         });
     }
 
-    public CompletableFuture<Boolean> rollback(CommandSender sender, String date) {
+    public CompletableFuture<Boolean> rollback(final CommandSender sender, final String date) {
         return enqueue(() -> {
             try {
                 plugin.gitService().rollback(date);
                 plugin.messages().send(sender, "rollback-success");
                 plugin.bossBars().show("reset", Map.of());
                 return Boolean.TRUE;
-            } catch (Exception e) {
-                String message = safeMessage(e);
+            } catch (final Exception e) {
+                final String message = safeMessage(e);
                 plugin.messages().send(sender, "rollback-failed", Map.of("error", message));
                 plugin.bossBars().show("reset-failed", Map.of());
                 return Boolean.FALSE;
@@ -202,23 +202,23 @@ public class CicdService implements ControlServer.Delegate {
         });
     }
 
-    public CompletableFuture<Results.LogPage> log(CommandSender sender, int page) {
+    public CompletableFuture<Results.LogPage> log(final CommandSender sender, final int page) {
         return enqueue(() -> plugin.gitService().log(page));
     }
 
-    public CompletableFuture<Results.LogEntry> commit(CommandSender sender, String ref) {
+    public CompletableFuture<Results.LogEntry> commit(final CommandSender sender, final String ref) {
         return enqueue(() -> plugin.gitService().getCommit(ref));
     }
 
-    public CompletableFuture<Results.StatusInfo> status(CommandSender sender) {
+    public CompletableFuture<Results.StatusInfo> status(final CommandSender sender) {
         return enqueue(() -> plugin.gitService().status());
     }
 
-    public CompletableFuture<List<String>> diff(CommandSender sender, boolean remote) {
+    public CompletableFuture<List<String>> diff(final CommandSender sender, final boolean remote) {
         return enqueue(() -> remote ? plugin.gitService().diffRemote() : plugin.gitService().diffLocal());
     }
 
-    public CompletableFuture<Boolean> script(CommandSender sender, String name) {
+    public CompletableFuture<Boolean> script(final CommandSender sender, final String name) {
         return enqueue(() -> {
             try {
                 plugin.bossBars().show("script", Map.of());
@@ -227,7 +227,7 @@ public class CicdService implements ControlServer.Delegate {
                 plugin.messages().send(sender, "script-success");
                 plugin.bossBars().show("script-success", Map.of());
                 return Boolean.TRUE;
-            } catch (ScriptException e) {
+            } catch (final ScriptException e) {
                 plugin.messages().send(sender, "script-failed", Map.of("error", e.getMessage()));
                 plugin.bossBars().show("script-failed", Map.of());
                 return Boolean.FALSE;
@@ -235,7 +235,7 @@ public class CicdService implements ControlServer.Delegate {
         });
     }
 
-    public CompletableFuture<Boolean> resolve(CommandSender sender, String mode) {
+    public CompletableFuture<Boolean> resolve(final CommandSender sender, final String mode) {
         return enqueue(() -> {
             try {
                 switch (mode) {
@@ -249,7 +249,7 @@ public class CicdService implements ControlServer.Delegate {
                 }
                 plugin.messages().send(sender, "resolve-success-" + mode);
                 return Boolean.TRUE;
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 plugin.messages().send(sender, "resolve-failed-" + mode, Map.of("error", safeMessage(e)));
                 return Boolean.FALSE;
             }
@@ -267,8 +267,8 @@ public class CicdService implements ControlServer.Delegate {
     // ----------------------------------------------------------------- control API
 
     @Override
-    public boolean tryAcquireInFlight(String requestId) {
-        String cur = inFlight.get();
+    public boolean tryAcquireInFlight(final String requestId) {
+        final String cur = inFlight.get();
         if (cur == null) {
             return inFlight.compareAndSet(null, requestId);
         }
@@ -277,13 +277,13 @@ public class CicdService implements ControlServer.Delegate {
     }
 
     @Override
-    public void releaseInFlight(String requestId) {
+    public void releaseInFlight(final String requestId) {
         inFlight.compareAndSet(requestId, null);
     }
 
     @Override
-    public void acceptRequest(String requestId, List<Action> actions, String branch) {
-        PendingRequest existing = plugin.pendingStore().load(requestId).orElse(null);
+    public void acceptRequest(final String requestId, final List<Action> actions, final String branch) {
+        final PendingRequest existing = plugin.pendingStore().load(requestId).orElse(null);
         if (existing != null) {
             if (existing.status() != Status.RUNNING) {
                 // idempotent retry: report the stored terminal status and release inFlight
@@ -298,14 +298,14 @@ public class CicdService implements ControlServer.Delegate {
                     existing.index(), existing.total());
             return;
         }
-        PendingRequest request = new PendingRequest(requestId, actions, branch);
+        final PendingRequest request = new PendingRequest(requestId, actions, branch);
         plugin.pendingStore().save(request);
         controlStatus.update(requestId, Status.RUNNING, null, request.index(), request.total());
         runRequestAsync(request);
     }
 
     @Override
-    public ProgressStream progressStream(String requestId) {
+    public ProgressStream progressStream(final String requestId) {
         return streams.computeIfAbsent(requestId, k -> new ProgressStream());
     }
 
@@ -315,28 +315,28 @@ public class CicdService implements ControlServer.Delegate {
     }
 
     @Override
-    public void removeRequest(String requestId) {
+    public void removeRequest(final String requestId) {
         streams.remove(requestId);
         controlStatus.clear(requestId);
         releaseInFlight(requestId);
     }
 
-    private void runRequestAsync(PendingRequest request) {
+    private void runRequestAsync(final PendingRequest request) {
         CompletableFuture.supplyAsync(() -> {
             runActions(request);
             return null;
         }, worker);
     }
 
-    private void runActions(PendingRequest request) {
-        String requestId = request.requestId();
-        ProgressStream stream = streams.computeIfAbsent(requestId, k -> new ProgressStream());
+    private void runActions(final PendingRequest request) {
+        final String requestId = request.requestId();
+        final ProgressStream stream = streams.computeIfAbsent(requestId, k -> new ProgressStream());
         try {
             while (request.hasRemaining()) {
-                Action action = request.current();
+                final Action action = request.current();
                 // M-06: escape action before broadcast to SSE
                 stream.broadcast("action:" + Messages.escape(String.valueOf(action)));
-                boolean ok = executeAction(action, request.branch(), requestId);
+                final boolean ok = executeAction(action, request.branch(), requestId);
                 controlStatus.bump(requestId);
                 if (ok) {
                     request.advance();
@@ -344,7 +344,7 @@ public class CicdService implements ControlServer.Delegate {
                     controlStatus.update(requestId, Status.RUNNING, null,
                             request.index(), request.total());
                 } else {
-                    String message = "action '" + Messages.escape(String.valueOf(action)) + "' failed";
+                    final String message = "action '" + Messages.escape(String.valueOf(action)) + "' failed";
                     request.failed(message);
                     plugin.pendingStore().save(request);
                     controlStatus.update(requestId, Status.FAILED, message,
@@ -361,8 +361,8 @@ public class CicdService implements ControlServer.Delegate {
             stream.broadcast("completed");
             stream.close();
             removeRequest(requestId);
-        } catch (Exception e) {
-            String message = Messages.escape(safeMessage(e));
+        } catch (final Exception e) {
+            final String message = Messages.escape(safeMessage(e));
             request.failed(message);
             plugin.pendingStore().save(request);
             controlStatus.update(requestId, Status.FAILED, message,
@@ -373,23 +373,23 @@ public class CicdService implements ControlServer.Delegate {
         }
     }
 
-    private boolean executeAction(Action action, String branch, String requestId) {
+    private boolean executeAction(final Action action, final String branch, final String requestId) {
         switch (action.type()) {
             case PULL -> {
                 try {
                     plugin.gitService().pull(false);
                     return true;
-                } catch (Exception e) {
+                } catch (final Exception e) {
                     return false;
                 }
             }
             case PUSH -> {
                 try {
-                    String message = action.argument() != null ? action.argument()
+                    final String message = action.argument() != null ? action.argument()
                             : plugin.config().control().pushMessage();
                     plugin.gitService().push(message);
                     return true;
-                } catch (Exception e) {
+                } catch (final Exception e) {
                     return false;
                 }
             }
@@ -414,7 +414,7 @@ public class CicdService implements ControlServer.Delegate {
                     plugin.scriptManager().run(action.argument(), null, line -> {
                     });
                     return true;
-                } catch (Exception e) {
+                } catch (final Exception e) {
                     return false;
                 }
             }
@@ -425,8 +425,8 @@ public class CicdService implements ControlServer.Delegate {
     }
 
     @SuppressWarnings("removal")
-    private void scheduleRestart(String requestId) {
-        Runnable restart = () -> {
+    private void scheduleRestart(final String requestId) {
+        final Runnable restart = () -> {
             try {
                 plugin.bossBars().show("control-trigger", Map.of());
             } finally {
@@ -440,9 +440,9 @@ public class CicdService implements ControlServer.Delegate {
         Threads.marshaled(plugin, () -> plugin.getServer().reload());
     }
 
-    private void reloadPluginByName(String name) {
-        Runnable reload = () -> {
-            org.bukkit.plugin.Plugin target = Bukkit.getPluginManager().getPlugin(name);
+    private void reloadPluginByName(final String name) {
+        final Runnable reload = () -> {
+            final org.bukkit.plugin.Plugin target = Bukkit.getPluginManager().getPlugin(name);
             if (target != null) {
                 Bukkit.getPluginManager().disablePlugin(target);
                 Bukkit.getPluginManager().enablePlugin(target);
@@ -451,7 +451,7 @@ public class CicdService implements ControlServer.Delegate {
         Threads.marshaled(plugin, reload);
     }
 
-    private void dispatchConsole(String command) {
+    private void dispatchConsole(final String command) {
         Threads.marshaled(plugin, () -> plugin.getServer().dispatchCommand(Bukkit.getConsoleSender(), command));
     }
 
@@ -468,7 +468,7 @@ public class CicdService implements ControlServer.Delegate {
     }
 
     private void resumePending() {
-        for (PendingRequest request : plugin.pendingStore().loadAll()) {
+        for (final PendingRequest request : plugin.pendingStore().loadAll()) {
             if (request.status() != Status.RUNNING || !request.hasRemaining()) {
                 continue;
             }
@@ -500,12 +500,12 @@ public class CicdService implements ControlServer.Delegate {
         return plugin.getControlAddress();
     }
 
-    private String safeMessage(Throwable t) {
+    private String safeMessage(final Throwable t) {
         Throwable current = t;
         while (current.getCause() != null) {
             current = current.getCause();
         }
-        String message = current.getMessage();
+        final String message = current.getMessage();
         return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
     }
 }

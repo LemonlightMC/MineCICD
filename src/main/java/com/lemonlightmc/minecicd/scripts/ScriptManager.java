@@ -19,7 +19,7 @@ public class ScriptManager {
     private final Path scriptsDir;
     private Map<String, Script> scripts;
 
-    public ScriptManager(MineCICD plugin) {
+    public ScriptManager(final MineCICD plugin) {
         this.plugin = plugin;
         this.scriptsDir = plugin.serverRoot().resolve("plugins").resolve("MineCICD").resolve("scripts");
     }
@@ -39,12 +39,12 @@ public class ScriptManager {
                         final String name = p.getFileName().toString();
                         scripts.put(name, new Script(scriptsDir, name));
                     });
-        } catch (IOException e) {
+        } catch (final IOException e) {
             plugin.getLogger().warning("Unable to load scripts: " + e.getMessage());
         }
     }
 
-    public boolean scriptExists(String name) {
+    public boolean scriptExists(final String name) {
         return scripts.containsKey(name);
     }
 
@@ -56,8 +56,8 @@ public class ScriptManager {
         return scripts.get(name);
     }
 
-    public void run(final String name, final CommandSender executor, Consumer<String> consoleLine) {
-        Script script = scripts.get(name);
+    public void run(final String name, final CommandSender executor, final Consumer<String> consoleLine) {
+        final Script script = scripts.get(name);
         script.run(executor, plugin, consoleLine);
     }
 

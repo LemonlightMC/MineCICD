@@ -1,6 +1,7 @@
 package com.lemonlightmc.minecicd.git;
 
 import com.lemonlightmc.minecicd.MineCICD;
+import com.lemonlightmc.minecicd.exceptions.GitException;
 import com.lemonlightmc.minecicd.git.Results.LogEntry;
 import com.lemonlightmc.minecicd.git.Results.LogPage;
 import com.lemonlightmc.minecicd.git.Results.PullResult;
@@ -43,7 +44,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class GitService {
-    
+
     private static final int PAGE_SIZE = 5;
     private static final Pattern COMMIT_FROM_URL = Pattern.compile("[0-9a-fA-F]{40}");
 
@@ -51,7 +52,7 @@ public class GitService {
     private Git git;
     private Repository repo;
 
-    public GitService(MineCICD plugin) {
+    public GitService(final MineCICD plugin) {
         this.plugin = plugin;
     }
 
@@ -59,28 +60,28 @@ public class GitService {
         return Files.exists(plugin.serverRoot().resolve(".git"));
     }
 
-    public synchronized PullResult pull(boolean force) {
-        boolean alreadyInitialized = isInitialized();
+    public synchronized PullResult pull(final boolean force) {
+        final boolean alreadyInitialized = isInitialized();
         openOrInit();
         ensureRemote();
-        ObjectId oldTip = remoteBranchTip();
+        final ObjectId oldTip = remoteBranchTip();
         fetch();
-        ObjectId newTip = remoteBranchTip();
-        List<RevCommit> commits = commitsInRange(oldTip, newTip);
+        final ObjectId newTip = remoteBranchTip();
+        final List<RevCommit> commits = commitsInRange(oldTip, newTip);
         syncToConfiguredBranch(force);
         return new PullResult(commits, !alreadyInitialized);
     }
 
-    public synchronized PushResult push(String message) {
+    public synchronized PushResult push(final String message) {
         openOrInit();
         ensureRemote();
-        String branch = plugin.config().git().branch();
+        final String branch = plugin.config().git().branch();
         ensureLocalBranch(branch);
         Status status;
         try {
             git.add().addFilepattern(".").call();
             status = git.status().call();
-        } catch (GitAPIException e) {
+        } catch (final GitAPIException e) {
             throw new GitException(rootMessage(e), e);
         }
         if (status.isClean()) {
@@ -91,73 +92,73 @@ public class GitService {
         return new PushResult(1, true);
     }
 
-    public synchronized int addToTracking(String pathSpec) {
-        String entry = normalizeTrackingEntry(pathSpec);
-        GitIgnoreEditor editor = new GitIgnoreEditor(plugin.serverRoot());
-        boolean changed = editor.remove(entry);
+    public synchronized int addToTracking(final String pathSpec) {
+        final String entry = normalizeTrackingEntry(pathSpec);
+        final GitIgnoreEditor editor = new GitIgnoreEditor(plugin.serverRoot());
+        final boolean changed = editor.remove(entry);
         if (changed) {
             commitIgnoreChange("Added " + entry + " to Git tracking");
         }
         return changed ? 1 : 0;
     }
 
-    public synchronized int removeFromTracking(String pathSpec) {
-        String entry = normalizeTrackingEntry(pathSpec);
-        GitIgnoreEditor editor = new GitIgnoreEditor(plugin.serverRoot());
-        boolean changed = editor.add(entry);
+    public synchronized int removeFromTracking(final String pathSpec) {
+        final String entry = normalizeTrackingEntry(pathSpec);
+        final GitIgnoreEditor editor = new GitIgnoreEditor(plugin.serverRoot());
+        final boolean changed = editor.add(entry);
         if (changed) {
             commitIgnoreChange("Removed " + entry + " from Git tracking");
         }
         return changed ? 1 : 0;
     }
 
-    public synchronized void reset(String commitRef) {
+    public synchronized void reset(final String commitRef) {
         openOrInit();
-        ObjectId id = resolveRev(commitRef);
+        final ObjectId id = resolveRev(commitRef);
         if (id == null) {
             throw new GitException("Invalid commit hash / link");
         }
         try {
             git.reset().setMode(ResetType.HARD).setRef(id.name()).call();
-        } catch (GitAPIException e) {
+        } catch (final GitAPIException e) {
             throw new GitException(rootMessage(e), e);
         }
     }
 
-    public synchronized void revert(String commitRef) {
+    public synchronized void revert(final String commitRef) {
         openOrInit();
-        ObjectId id = resolveRev(commitRef);
+        final ObjectId id = resolveRev(commitRef);
         if (id == null) {
             throw new GitException("Invalid commit hash / link");
         }
         try {
             git.revert().include(id).call();
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new GitException(rootMessage(e), e);
         }
     }
 
-    public synchronized void rollback(String dateString) {
+    public synchronized void rollback(final String dateString) {
         openOrInit();
         long target;
         try {
             target = LocalDateTime.parse(dateString, DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss"))
                     .atZone(ZoneId.systemDefault()).toEpochSecond();
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new GitException("Invalid date format");
         }
         try (RevWalk walk = new RevWalk(repo)) {
-            ObjectId headId = repo.resolve(Constants.HEAD);
+            final ObjectId headId = repo.resolve(Constants.HEAD);
             if (headId == null) {
                 throw new GitException("Repository has no commits");
             }
-            RevCommit head = walk.parseCommit(headId);
+            final RevCommit head = walk.parseCommit(headId);
             if (target >= head.getCommitTime()) {
                 throw new GitException("Date is in the future");
             }
             walk.markStart(head);
             RevCommit found = null;
-            for (RevCommit commit : walk) {
+            for (final RevCommit commit : walk) {
                 if (commit.getCommitTime() <= target) {
                     found = commit;
                     break;
@@ -167,47 +168,47 @@ public class GitService {
                 throw new GitException("No commit before the given date");
             }
             git.reset().setMode(ResetType.HARD).setRef(found.getId().name()).call();
-        } catch (GitException e) {
+        } catch (final GitException e) {
             throw e;
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new GitException(rootMessage(e), e);
         }
     }
 
-    public synchronized LogPage log(int page) {
+    public synchronized LogPage log(final int page) {
         openOrInit();
         try (RevWalk walk = new RevWalk(repo)) {
-            ObjectId headId = repo.resolve(Constants.HEAD);
+            final ObjectId headId = repo.resolve(Constants.HEAD);
             if (headId == null) {
                 throw new GitException("Repository has no commits");
             }
             walk.markStart(walk.parseCommit(headId));
-            List<LogEntry> all = new ArrayList<>();
-            for (RevCommit commit : walk) {
+            final List<LogEntry> all = new ArrayList<>();
+            for (final RevCommit commit : walk) {
                 all.add(toEntry(commit, false));
             }
-            int maxPage = Math.max(1, (all.size() + PAGE_SIZE - 1) / PAGE_SIZE);
+            final int maxPage = Math.max(1, (all.size() + PAGE_SIZE - 1) / PAGE_SIZE);
             if (page < 1 || page > maxPage) {
                 return new LogPage(page, maxPage, List.of());
             }
-            int from = (page - 1) * PAGE_SIZE;
+            final int from = (page - 1) * PAGE_SIZE;
             return new LogPage(page, maxPage,
                     new ArrayList<>(all.subList(from, Math.min(from + PAGE_SIZE, all.size()))));
-        } catch (IOException e) {
+        } catch (final IOException e) {
             throw new GitException(rootMessage(e), e);
         }
     }
 
-    public synchronized LogEntry getCommit(String commitRef) {
+    public synchronized LogEntry getCommit(final String commitRef) {
         openOrInit();
-        ObjectId id = resolveRev(commitRef);
+        final ObjectId id = resolveRev(commitRef);
         if (id == null) {
             return null;
         }
         try (RevWalk walk = new RevWalk(repo)) {
-            RevCommit commit = walk.parseCommit(id);
+            final RevCommit commit = walk.parseCommit(id);
             return toEntry(commit, true);
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new GitException(rootMessage(e), e);
         }
     }
@@ -218,12 +219,12 @@ public class GitService {
         }
         try {
             open();
-            String branch = currentBranch();
-            Status st = git.status().call();
-            int localChanges = st.getUncommittedChanges().size();
-            int remoteChanges = behindCount(plugin.config().git().branch());
+            final String branch = currentBranch();
+            final Status st = git.status().call();
+            final int localChanges = st.getUncommittedChanges().size();
+            final int remoteChanges = behindCount(plugin.config().git().branch());
             return new StatusInfo(branch, plugin.config().git().repo(), localChanges, remoteChanges);
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new GitException(rootMessage(e), e);
         }
     }
@@ -234,9 +235,9 @@ public class GitService {
         }
         try {
             open();
-            Status st = git.status().call();
+            final Status st = git.status().call();
             return new ArrayList<>(new TreeSet<>(st.getUncommittedChanges()));
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new GitException(rootMessage(e), e);
         }
     }
@@ -247,17 +248,17 @@ public class GitService {
         }
         try {
             open();
-            String branch = plugin.config().git().branch();
-            ObjectId head = repo.resolve(Constants.HEAD);
-            ObjectId remote = repo.resolve(remoteBranchName(branch));
+            final String branch = plugin.config().git().branch();
+            final ObjectId head = repo.resolve(Constants.HEAD);
+            final ObjectId remote = repo.resolve(remoteBranchName(branch));
             if (head == null || remote == null) {
                 return List.of();
             }
-            CanonicalTreeParser oldTree = treeParser(remote);
-            CanonicalTreeParser newTree = treeParser(head);
-            List<DiffEntry> entries = git.diff().setOldTree(oldTree).setNewTree(newTree).call();
+            final CanonicalTreeParser oldTree = treeParser(remote);
+            final CanonicalTreeParser newTree = treeParser(head);
+            final List<DiffEntry> entries = git.diff().setOldTree(oldTree).setNewTree(newTree).call();
             return entries.stream().map(this::formatDiffEntry).toList();
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new GitException(rootMessage(e), e);
         }
     }
@@ -266,18 +267,18 @@ public class GitService {
         openOrInit();
         try {
             git.reset().setMode(ResetType.MERGE).call();
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new GitException(rootMessage(e), e);
         }
     }
 
     public synchronized void resolveRepoReset() {
         openOrInit();
-        String branch = plugin.config().git().branch();
+        final String branch = plugin.config().git().branch();
         ObjectId remote;
         try {
             remote = repo.resolve(remoteBranchName(branch));
-        } catch (IOException e) {
+        } catch (final IOException e) {
             throw new GitException(rootMessage(e), e);
         }
         if (remote == null) {
@@ -285,7 +286,7 @@ public class GitService {
         }
         try {
             git.reset().setMode(ResetType.HARD).setRef(remote.name()).call();
-        } catch (GitAPIException e) {
+        } catch (final GitAPIException e) {
             throw new GitException(rootMessage(e), e);
         }
     }
@@ -294,7 +295,7 @@ public class GitService {
         openOrInit();
         try {
             git.reset().setMode(ResetType.HARD).setRef(Constants.HEAD).call();
-        } catch (GitAPIException e) {
+        } catch (final GitAPIException e) {
             throw new GitException(rootMessage(e), e);
         }
     }
@@ -314,7 +315,7 @@ public class GitService {
         if (repo != null) {
             return;
         }
-        Repository opened = new FileRepositoryBuilder()
+        final Repository opened = new FileRepositoryBuilder()
                 .setWorkTree(plugin.serverRoot().toFile())
                 .findGitDir(plugin.serverRoot().toFile())
                 .build();
@@ -332,25 +333,25 @@ public class GitService {
                         .call();
                 repo = git.getRepository();
             }
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new GitException("Unable to open/initialize repository: " + rootMessage(e), e);
         }
     }
 
     private void ensureRemote() {
-        String url = plugin.config().git().repo();
+        final String url = plugin.config().git().repo();
         // L-06/S-06: enforce an allowlist of authenticated, encrypted transports.
         // git:// has no transport authentication or encryption; a network attacker
         // could impersonate the remote and alter files during a pull.
         validateRemoteUrl(url);
         try {
-            boolean hasOrigin = repo.getConfig().getSubsections("remote").contains("origin");
+            final boolean hasOrigin = repo.getConfig().getSubsections("remote").contains("origin");
             if (hasOrigin) {
                 git.remoteSetUrl().setRemoteName("origin").setRemoteUri(new URIish(url)).call();
             } else {
                 git.remoteAdd().setName("origin").setUri(new URIish(url)).call();
             }
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new GitException("Unable to configure remote: " + rootMessage(e), e);
         }
     }
@@ -373,11 +374,11 @@ public class GitService {
      * @throws GitException if the URL is null, blank, or uses a disallowed
      *                      transport
      */
-    static void validateRemoteUrl(String url) {
+    static void validateRemoteUrl(final String url) {
         if (url == null || url.isBlank()) {
             throw new GitException("No remote repository configured (git.repo)");
         }
-        String lower = url.toLowerCase();
+        final String lower = url.toLowerCase();
         if (lower.startsWith("file://") || lower.startsWith("ext::") || lower.contains("..")
                 || lower.startsWith("git://")) {
             throw new GitException("Remote URL not allowed: " + url);
@@ -390,13 +391,13 @@ public class GitService {
     private void fetch() {
         try {
             git.fetch().setRemote("origin").setCredentialsProvider(credentials()).call();
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new GitException("Fetch failed: " + rootMessage(e), e);
         }
     }
 
     private CredentialsProvider credentials() {
-        String user = plugin.config().git().user();
+        final String user = plugin.config().git().user();
         if (user == null || user.isEmpty()) {
             return null;
         }
@@ -405,27 +406,27 @@ public class GitService {
 
     private ObjectId remoteBranchTip() {
         try {
-            Ref ref = repo.exactRef(remoteBranchName(plugin.config().git().branch()));
+            final Ref ref = repo.exactRef(remoteBranchName(plugin.config().git().branch()));
             return ref == null ? null : ref.getObjectId();
-        } catch (IOException e) {
+        } catch (final IOException e) {
             return null;
         }
     }
 
-    private String remoteBranchName(String branch) {
+    private String remoteBranchName(final String branch) {
         return Constants.R_REMOTES + "origin/" + branch;
     }
 
-    private List<RevCommit> commitsInRange(ObjectId oldTip, ObjectId newTip) {
+    private List<RevCommit> commitsInRange(final ObjectId oldTip, final ObjectId newTip) {
         if (newTip == null) {
             return List.of();
         }
         try (RevWalk walk = new RevWalk(repo)) {
-            RevCommit newCommit = walk.parseCommit(newTip);
+            final RevCommit newCommit = walk.parseCommit(newTip);
             if (oldTip == null) {
                 walk.markStart(newCommit);
-                List<RevCommit> out = new ArrayList<>();
-                for (RevCommit commit : walk) {
+                final List<RevCommit> out = new ArrayList<>();
+                for (final RevCommit commit : walk) {
                     if (out.size() >= 100) {
                         break;
                     }
@@ -433,29 +434,29 @@ public class GitService {
                 }
                 return out;
             }
-            RevCommit oldCommit = walk.parseCommit(oldTip);
+            final RevCommit oldCommit = walk.parseCommit(oldTip);
             if (oldCommit.getId().equals(newCommit.getId())) {
                 return List.of();
             }
             walk.markStart(newCommit);
             walk.markUninteresting(oldCommit);
-            List<RevCommit> out = new ArrayList<>();
-            for (RevCommit commit : walk) {
+            final List<RevCommit> out = new ArrayList<>();
+            for (final RevCommit commit : walk) {
                 if (out.size() >= 100) {
                     break;
                 }
                 out.add(commit);
             }
             return out;
-        } catch (IOException e) {
+        } catch (final IOException e) {
             throw new GitException(rootMessage(e), e);
         }
     }
 
-    private void syncToConfiguredBranch(boolean force) {
-        String branch = plugin.config().git().branch();
-        Ref remoteRef = findOrNull(remoteBranchName(branch));
-        Ref localRef = findOrNull(Constants.R_HEADS + branch);
+    private void syncToConfiguredBranch(final boolean force) {
+        final String branch = plugin.config().git().branch();
+        final Ref remoteRef = findOrNull(remoteBranchName(branch));
+        final Ref localRef = findOrNull(Constants.R_HEADS + branch);
         if (remoteRef == null || remoteRef.getObjectId() == null) {
             if (localRef != null && localRef.getObjectId() != null) {
                 throw new GitException("Remote branch " + branch + " not found on the remote");
@@ -472,69 +473,69 @@ public class GitService {
         if (!branch.equals(currentBranch())) {
             checkout(branch);
         }
-        int ahead = countAhead(localRef.getObjectId(), remoteRef.getObjectId());
+        final int ahead = countAhead(localRef.getObjectId(), remoteRef.getObjectId());
         if (ahead > 0 && !force) {
             throw new GitException.PullAborted("unpushed changes");
         }
         try {
             git.reset().setMode(ResetType.HARD).setRef(remoteRef.getName()).call();
-        } catch (GitAPIException e) {
+        } catch (final GitAPIException e) {
             throw new GitException(rootMessage(e), e);
         }
     }
 
-    private void ensureLocalBranch(String branch) {
-        Ref localRef = findOrNull(Constants.R_HEADS + branch);
+    private void ensureLocalBranch(final String branch) {
+        final Ref localRef = findOrNull(Constants.R_HEADS + branch);
         try {
             if (localRef == null || localRef.getObjectId() == null) {
                 createOrCheckout(branch, null);
             } else if (!branch.equals(currentBranch())) {
                 checkout(branch);
             }
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new GitException(rootMessage(e), e);
         }
     }
 
-    private void createOrCheckout(String branch, String startPoint) {
+    private void createOrCheckout(final String branch, final String startPoint) {
         try {
             if (startPoint == null) {
                 git.checkout().setName(branch).setCreateBranch(true).call();
             } else {
                 git.checkout().setName(branch).setCreateBranch(true).setStartPoint(startPoint).call();
             }
-        } catch (GitAPIException e) {
+        } catch (final GitAPIException e) {
             throw new GitException(rootMessage(e), e);
         }
     }
 
-    private void checkout(String branch) {
+    private void checkout(final String branch) {
         try {
             git.checkout().setName(branch).call();
-        } catch (GitAPIException e) {
+        } catch (final GitAPIException e) {
             throw new GitException(rootMessage(e), e);
         }
     }
 
-    private int countAhead(ObjectId local, ObjectId remote) {
+    private int countAhead(final ObjectId local, final ObjectId remote) {
         try (RevWalk walk = new RevWalk(repo)) {
             walk.markStart(walk.parseCommit(local));
             walk.markUninteresting(walk.parseCommit(remote));
             int count = 0;
-            for (RevCommit ignored : walk) {
+            for (final RevCommit ignored : walk) {
                 if (++count > 1000) {
                     break;
                 }
             }
             return count;
-        } catch (IOException e) {
+        } catch (final IOException e) {
             return 0;
         }
     }
 
-    private int behindCount(String branch) {
-        Ref remoteRef = findOrNull(remoteBranchName(branch));
-        Ref localHead = findOrNull(Constants.HEAD);
+    private int behindCount(final String branch) {
+        final Ref remoteRef = findOrNull(remoteBranchName(branch));
+        final Ref localHead = findOrNull(Constants.HEAD);
         if (remoteRef == null || localHead == null || remoteRef.getObjectId() == null
                 || localHead.getObjectId() == null) {
             return 0;
@@ -542,10 +543,10 @@ public class GitService {
         return countAhead(remoteRef.getObjectId(), localHead.getObjectId());
     }
 
-    private Ref findOrNull(String name) {
+    private Ref findOrNull(final String name) {
         try {
             return repo.findRef(name);
-        } catch (IOException e) {
+        } catch (final IOException e) {
             return null;
         }
     }
@@ -553,12 +554,12 @@ public class GitService {
     private String currentBranch() {
         try {
             return repo.getBranch();
-        } catch (Exception e) {
+        } catch (final Exception e) {
             return Constants.HEAD;
         }
     }
 
-    private void commitWithIdentity(String message) {
+    private void commitWithIdentity(final String message) {
         String name = plugin.config().git().user();
         if (name == null || name.isBlank()) {
             name = "MineCICD";
@@ -567,102 +568,103 @@ public class GitService {
         if (email == null || email.isBlank()) {
             email = "minecicd@minecicd.local";
         }
-        PersonIdent identity = new PersonIdent(name, email);
+        final PersonIdent identity = new PersonIdent(name, email);
         try {
             git.commit().setMessage(message).setAuthor(identity).setCommitter(identity).call();
-        } catch (GitAPIException e) {
+        } catch (final GitAPIException e) {
             throw new GitException("Commit failed: " + rootMessage(e), e);
         }
     }
 
-    private void commitIgnoreChange(String message) {
+    private void commitIgnoreChange(final String message) {
         openOrInit();
         ensureRemote();
         ensureLocalBranch(plugin.config().git().branch());
         try {
             git.add().addFilepattern(".gitignore").call();
             commitWithIdentity(message);
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new GitException(rootMessage(e), e);
         }
         pushToRemote(plugin.config().git().branch());
     }
 
-    private void pushToRemote(String branch) {
+    private void pushToRemote(final String branch) {
         try {
-            Iterable<org.eclipse.jgit.transport.PushResult> results = git.push()
+            final Iterable<org.eclipse.jgit.transport.PushResult> results = git.push()
                     .setRemote("origin")
                     .setRefSpecs(new RefSpec("refs/heads/" + branch + ":refs/heads/" + branch))
                     .setCredentialsProvider(credentials())
                     .call();
-            for (org.eclipse.jgit.transport.PushResult result : results) {
-                for (RemoteRefUpdate update : result.getRemoteUpdates()) {
-                    RemoteRefUpdate.Status status = update.getStatus();
+            for (final org.eclipse.jgit.transport.PushResult result : results) {
+                for (final RemoteRefUpdate update : result.getRemoteUpdates()) {
+                    final RemoteRefUpdate.Status status = update.getStatus();
                     if (status != RemoteRefUpdate.Status.OK && status != RemoteRefUpdate.Status.UP_TO_DATE) {
-                        String message = update.getMessage() == null ? status.name() : update.getMessage();
+                        final String message = update.getMessage() == null ? status.name() : update.getMessage();
                         throw new GitException("Push rejected: " + message);
                     }
                 }
             }
-        } catch (GitException e) {
+        } catch (final GitException e) {
             throw e;
-        } catch (GitAPIException e) {
+        } catch (final GitAPIException e) {
             throw new GitException("Push failed: " + rootMessage(e), e);
         }
     }
 
-    private ObjectId resolveRev(String input) {
+    private ObjectId resolveRev(final String input) {
         if (input == null) {
             return null;
         }
         try {
-            Matcher matcher = COMMIT_FROM_URL.matcher(input);
+            final Matcher matcher = COMMIT_FROM_URL.matcher(input);
             if (matcher.find()) {
                 return repo.resolve(matcher.group());
             }
             return repo.resolve(input.trim());
-        } catch (Exception e) {
+        } catch (final Exception e) {
             return null;
         }
     }
 
-    private LogEntry toEntry(RevCommit commit, boolean withChanges) {
-        String date = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss").format(new Date(commit.getCommitTime() * 1000L));
-        String message = joinMessage(commit.getFullMessage());
-        List<String> changes = withChanges ? changesFor(commit) : List.of();
+    private LogEntry toEntry(final RevCommit commit, final boolean withChanges) {
+        final String date = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss")
+                .format(new Date(commit.getCommitTime() * 1000L));
+        final String message = joinMessage(commit.getFullMessage());
+        final List<String> changes = withChanges ? changesFor(commit) : List.of();
         return new LogEntry(commit.getId().name(), commit.getAuthorIdent().getName(), date, message, changes);
     }
 
-    private String joinMessage(String raw) {
+    private String joinMessage(final String raw) {
         if (raw == null) {
             return "";
         }
-        String single = raw.replace("\r", "").replace("\n", " ").trim();
+        final String single = raw.replace("\r", "").replace("\n", " ").trim();
         return single;
     }
 
-    private List<String> changesFor(RevCommit commit) {
+    private List<String> changesFor(final RevCommit commit) {
         try (RevWalk walk = new RevWalk(repo)) {
-            RevCommit parent = commit.getParentCount() > 0 ? walk.parseCommit(commit.getParent(0).getId()) : null;
+            final RevCommit parent = commit.getParentCount() > 0 ? walk.parseCommit(commit.getParent(0).getId()) : null;
             if (parent == null) {
                 return treeNames(commit.getTree());
             }
-            List<DiffEntry> entries = git.diff()
+            final List<DiffEntry> entries = git.diff()
                     .setOldTree(treeParser(parent))
                     .setNewTree(treeParser(commit))
                     .call();
-            List<String> out = new ArrayList<>();
-            for (DiffEntry entry : entries) {
+            final List<String> out = new ArrayList<>();
+            for (final DiffEntry entry : entries) {
                 out.add(formatDiffEntry(entry));
             }
             return out;
-        } catch (Exception e) {
+        } catch (final Exception e) {
             return List.of();
         }
     }
 
-    private List<String> treeNames(RevTree tree) throws IOException {
-        List<String> names = new ArrayList<>();
+    private List<String> treeNames(final RevTree tree) throws IOException {
+        final List<String> names = new ArrayList<>();
         try (TreeWalk tw = new TreeWalk(repo)) {
             tw.addTree(tree);
             tw.setRecursive(true);
@@ -673,24 +675,24 @@ public class GitService {
         return names;
     }
 
-    private CanonicalTreeParser treeParser(ObjectId commitId) throws IOException {
+    private CanonicalTreeParser treeParser(final ObjectId commitId) throws IOException {
         try (RevWalk walk = new RevWalk(repo)) {
             return treeParser(walk.parseCommit(commitId));
         }
     }
 
-    private CanonicalTreeParser treeParser(RevCommit commit) throws IOException {
-        RevTree tree = commit.getTree();
-        CanonicalTreeParser parser = new CanonicalTreeParser();
+    private CanonicalTreeParser treeParser(final RevCommit commit) throws IOException {
+        final RevTree tree = commit.getTree();
+        final CanonicalTreeParser parser = new CanonicalTreeParser();
         try (org.eclipse.jgit.lib.ObjectReader reader = repo.newObjectReader()) {
             parser.reset(reader, tree.getId());
         }
         return parser;
     }
 
-    private String formatDiffEntry(DiffEntry entry) {
-        String oldPath = entry.getOldPath();
-        String newPath = entry.getNewPath();
+    private String formatDiffEntry(final DiffEntry entry) {
+        final String oldPath = entry.getOldPath();
+        final String newPath = entry.getNewPath();
         if (!oldPath.equals(newPath)) {
             return oldPath + " -> " + newPath;
         }
@@ -700,7 +702,7 @@ public class GitService {
         return oldPath;
     }
 
-    private String normalizeTrackingEntry(String pathSpec) {
+    private String normalizeTrackingEntry(final String pathSpec) {
         String p = pathSpec == null ? "" : pathSpec.trim().replace('\\', '/');
         if (p.isEmpty()) {
             throw new GitException("Empty path");
@@ -711,27 +713,27 @@ public class GitService {
         while (p.startsWith("/")) {
             p = p.substring(1);
         }
-        for (String segment : p.split("/")) {
+        for (final String segment : p.split("/")) {
             if (segment.isEmpty() || ".".equals(segment) || "..".equals(segment)) {
                 throw new GitException("Invalid path: " + pathSpec);
             }
         }
         // M-05: rely solely on syntactic trailing '/' (TOCTOU-safe); callers must
         // include '/' for directories
-        Path resolved = plugin.serverRoot().resolve(p).normalize().toAbsolutePath();
-        Path base = plugin.serverRoot().normalize().toAbsolutePath();
+        final Path resolved = plugin.serverRoot().resolve(p).normalize().toAbsolutePath();
+        final Path base = plugin.serverRoot().normalize().toAbsolutePath();
         if (!resolved.startsWith(base)) {
             throw new GitException("Path escapes server root: " + pathSpec);
         }
         return p;
     }
 
-    private String rootMessage(Throwable t) {
+    private String rootMessage(final Throwable t) {
         Throwable current = t;
         while (current.getCause() != null) {
             current = current.getCause();
         }
-        String message = current.getMessage();
+        final String message = current.getMessage();
         return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
     }
 }

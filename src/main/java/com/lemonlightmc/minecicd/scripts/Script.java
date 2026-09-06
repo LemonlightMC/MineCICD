@@ -27,7 +27,7 @@ public class Script {
   private long lastRunDuration;
   private long avgDuration;
 
-  public Script(Path dir, final String name) {
+  public Script(final Path dir, final String name) {
     this.name = name;
     this.path = resolvePath(dir, name);
     if (this.path == null) {
@@ -63,7 +63,7 @@ public class Script {
     List<String> lines;
     try {
       lines = Files.readAllLines(this.path, StandardCharsets.UTF_8);
-    } catch (IOException e) {
+    } catch (final IOException e) {
       throw new ScriptException("Unable to read script: " + e.getMessage());
     }
     lines.stream().filter(line -> line == null || line.isBlank() || line.startsWith("#")).map(line -> line.trim());
@@ -78,17 +78,17 @@ public class Script {
    * lines processed, throwing on the first failing console command or shell
    * error.
    */
-  public void run(CommandSender executor, MineCICD plugin, Consumer<String> consoleLine) {
+  public void run(final CommandSender executor, final MineCICD plugin, final Consumer<String> consoleLine) {
     final long start = System.currentTimeMillis();
 
     for (int i = 0; i < this.lines.length; i++) {
-      String line = lines[i];
+      final String line = lines[i];
       plugin.getLogger().info("[script]" + name + " - Executing (line " + i + "): " + line);
       if (line.startsWith("! ")) {
-        String command = line.substring(2).trim();
+        final String command = line.substring(2).trim();
         runShell(command, executor, plugin, i + 1);
       } else {
-        String command = line.startsWith("/") ? line.substring(1) : line;
+        final String command = line.startsWith("/") ? line.substring(1) : line;
         dispatchCommand(command, executor, plugin, i + 1);
       }
       if (consoleLine != null) {
@@ -99,26 +99,27 @@ public class Script {
     recordRun(start);
   }
 
-  private void dispatchCommand(String command, CommandSender executor, MineCICD plugin, int line) {
+  private void dispatchCommand(final String command, final CommandSender executor, final MineCICD plugin,
+      final int line) {
     try {
-      boolean success = plugin.getServer().getScheduler()
+      final boolean success = plugin.getServer().getScheduler()
           .callSyncMethod(plugin, () -> plugin.getServer().dispatchCommand(
               executor != null ? executor : Bukkit.getConsoleSender(), command))
           .get();
       if (!success) {
         throw new ScriptException(name + " - Command failed (line " + line + "): /" + command);
       }
-    } catch (ScriptException e) {
+    } catch (final ScriptException e) {
       throw e;
-    } catch (Exception e) {
+    } catch (final Exception e) {
       throw new ScriptException(name + " - Command failed (line " + line + "): /" + command + " -> " + rootMessage(e));
     }
   }
 
-  private void runShell(String command, CommandSender executor, MineCICD plugin, int line) {
+  private void runShell(final String command, final CommandSender executor, final MineCICD plugin, final int line) {
     try {
-      ProcessBuilder pb = new ProcessBuilder();
-      String os = System.getProperty("os.name", "").toLowerCase();
+      final ProcessBuilder pb = new ProcessBuilder();
+      final String os = System.getProperty("os.name", "").toLowerCase();
       if (os.contains("win")) {
         pb.command("cmd", "/c", command);
       } else {
@@ -128,41 +129,41 @@ public class Script {
       // M-04: sandbox - restrict working dir, sanitize env
       pb.directory(plugin.serverRoot().toFile());
       // clear and allowlist minimal env
-      java.util.Map<String, String> env = pb.environment();
-      String path = env.get("PATH");
-      String home = env.get("HOME");
+      final java.util.Map<String, String> env = pb.environment();
+      final String path = env.get("PATH");
+      final String home = env.get("HOME");
       env.clear();
       if (path != null)
         env.put("PATH", path);
       if (home != null)
         env.put("HOME", home);
-      Process process = pb.start();
-      InputStream out = process.getInputStream();
-      Thread drain = new Thread(() -> {
+      final Process process = pb.start();
+      final InputStream out = process.getInputStream();
+      final Thread drain = new Thread(() -> {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(out, StandardCharsets.UTF_8))) {
           String l;
           while ((l = reader.readLine()) != null) {
             plugin.getLogger().info("[script] " + l);
           }
-        } catch (IOException ignored) {
+        } catch (final IOException ignored) {
         }
       }, "minecicd-script-out");
       drain.setDaemon(true);
       drain.start();
       // M-04: per-script timeout 30s
-      boolean finished = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+      final boolean finished = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
       if (!finished) {
         process.destroyForcibly();
         throw new ScriptException(name + " - Shell command timed out (line " + line + "): " + command);
       }
-      int exit = process.exitValue();
+      final int exit = process.exitValue();
       if (exit != 0) {
         throw new ScriptException(
             name + " - Shell command failed (line " + line + "): " + command + " (exit " + exit + ")");
       }
-    } catch (ScriptException e) {
+    } catch (final ScriptException e) {
       throw e;
-    } catch (Exception e) {
+    } catch (final Exception e) {
       throw new ScriptException(
           name + " - Shell command failed (line " + line + "): " + command + " -> " + rootMessage(e));
     }
@@ -175,7 +176,7 @@ public class Script {
     this.avgDuration = (avgDuration + lastRunDuration) / 2;
   }
 
-  private static String rootMessage(Throwable t) {
+  private static String rootMessage(final Throwable t) {
     Throwable current = t;
     while (current.getCause() != null) {
       current = current.getCause();
@@ -183,7 +184,7 @@ public class Script {
     return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
   }
 
-  private static Path resolvePath(Path dir, String name) {
+  private static Path resolvePath(final Path dir, final String name) {
     if (name == null || name.isBlank() || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0 || "..".equals(name)
         || name.startsWith(".")) {
       return null;
@@ -201,18 +202,18 @@ public class Script {
       }
     }
     // M-03: canonical-path confinement - follow symlinks in all parent components
-    Path normalized = file.normalize().toAbsolutePath();
-    Path base = dir.normalize().toAbsolutePath();
+    final Path normalized = file.normalize().toAbsolutePath();
+    final Path base = dir.normalize().toAbsolutePath();
     if (!normalized.startsWith(base)) {
       return null;
     }
     try {
-      Path realBase = base.toRealPath();
-      Path realFile = normalized.toRealPath();
+      final Path realBase = base.toRealPath();
+      final Path realFile = normalized.toRealPath();
       if (!realFile.startsWith(realBase)) {
         return null;
       }
-    } catch (IOException ignored) {
+    } catch (final IOException ignored) {
       // base or file does not exist yet - fall back to normalized check above
     }
     return normalized;

@@ -14,27 +14,27 @@ public final class Threads {
     private Threads() {
     }
 
-    public static ThreadFactory daemonFactory(String name) {
+    public static ThreadFactory daemonFactory(final String name) {
         return runnable -> {
-            Thread thread = new Thread(runnable, name);
+            final Thread thread = new Thread(runnable, name);
             thread.setDaemon(true);
             return thread;
         };
     }
 
-    public static ExecutorService singleDaemonWorker(String name) {
+    public static ExecutorService singleDaemonWorker(final String name) {
         return Executors.newSingleThreadExecutor(daemonFactory(name));
     }
 
-    public static ExecutorService dameonThreadPool(String name, int amount) {
+    public static ExecutorService dameonThreadPool(final String name, final int amount) {
         return Executors.newFixedThreadPool(amount, daemonFactory(name));
     }
 
-    public static ScheduledExecutorService scheduledThreadExecutor(String name) {
+    public static ScheduledExecutorService scheduledThreadExecutor(final String name) {
         return Executors.newSingleThreadScheduledExecutor(daemonFactory(name));
     }
 
-    public static void marshaled(MineCICD plugin, Runnable runnable) {
+    public static void marshaled(final MineCICD plugin, final Runnable runnable) {
         if (Bukkit.isPrimaryThread()) {
             runnable.run();
         } else {

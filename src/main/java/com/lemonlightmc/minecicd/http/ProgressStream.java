@@ -10,9 +10,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Holds the active SSE (server-sent events) connections per requestId. The control
+ * Holds the active SSE (server-sent events) connections per requestId. The
+ * control
  * runner writes progress lines to every attached client so the GitHub Action's
- * stream prints to its log, then polls the terminal status via {@link ControlStatus}.
+ * stream prints to its log, then polls the terminal status via
+ * {@link ControlStatus}.
  */
 public class ProgressStream {
 
@@ -23,7 +25,7 @@ public class ProgressStream {
         return exchanges;
     }
 
-    public boolean add(HttpExchange exchange) {
+    public boolean add(final HttpExchange exchange) {
         if (closed.get()) {
             return false;
         }
@@ -34,16 +36,16 @@ public class ProgressStream {
         return true;
     }
 
-    public synchronized void broadcast(String data) {
-        byte[] payload = ("data: " + data.replace("\n", "\\n") + "\n\n").getBytes(StandardCharsets.UTF_8);
-        for (HttpExchange exchange : exchanges) {
+    public synchronized void broadcast(final String data) {
+        final byte[] payload = ("data: " + data.replace("\n", "\\n") + "\n\n").getBytes(StandardCharsets.UTF_8);
+        for (final HttpExchange exchange : exchanges) {
             try {
-                OutputStream out = exchange.getResponseBody();
+                final OutputStream out = exchange.getResponseBody();
                 synchronized (out) {
                     out.write(payload);
                     out.flush();
                 }
-            } catch (IOException ignored) {
+            } catch (final IOException ignored) {
                 exchanges.remove(exchange);
             }
         }
@@ -51,10 +53,10 @@ public class ProgressStream {
 
     public synchronized void close() {
         closed.set(true);
-        for (HttpExchange exchange : exchanges) {
+        for (final HttpExchange exchange : exchanges) {
             try {
                 exchange.close();
-            } catch (Exception ignored) {
+            } catch (final Exception ignored) {
             }
         }
         exchanges.clear();

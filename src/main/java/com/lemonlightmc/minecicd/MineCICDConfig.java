@@ -41,8 +41,8 @@ public class MineCICDConfig {
 
     public record Actions(EnumSet<ActionType> allowedActions, Set<String> allowedCommands, Set<String> allowedScripts) {
 
-        public static Actions from(ConfigurationSection section) {
-            EnumSet<ActionType> set = EnumSet.noneOf(ActionType.class);
+        public static Actions from(final ConfigurationSection section) {
+            final EnumSet<ActionType> set = EnumSet.noneOf(ActionType.class);
             if (section.getBoolean("pull", true)) {
                 set.add(ActionType.PULL);
             }
@@ -81,43 +81,43 @@ public class MineCICDConfig {
     private Control control;
     private boolean experimentalJarLoading;
 
-    public MineCICDConfig(MineCICD plugin) {
+    public MineCICDConfig(final MineCICD plugin) {
         this.plugin = plugin;
         load();
     }
 
     public void load() {
-        File file = new File(plugin.getDataFolder(), "config.yml");
+        final File file = new File(plugin.getDataFolder(), "config.yml");
         if (!file.exists()) {
             plugin.saveResource("config.yml", false);
         }
         config = YamlConfiguration.loadConfiguration(file);
         try (InputStream in = plugin.getResource("config.yml")) {
             if (in != null) {
-                YamlConfiguration defaults = YamlConfiguration
+                final YamlConfiguration defaults = YamlConfiguration
                         .loadConfiguration(new InputStreamReader(in, StandardCharsets.UTF_8));
                 patchConfig(file, defaults);
                 config = YamlConfiguration.loadConfiguration(file);
             }
-        } catch (Exception e) {
+        } catch (final Exception e) {
             plugin.getLogger().warning("Unable to load bundled config.yml: " + e.getMessage());
         }
         try {
             config.save(file);
             hardenPermissions(file.toPath());
-        } catch (Exception e) {
+        } catch (final Exception e) {
             plugin.getLogger().warning("Unable to save config.yml: " + e.getMessage());
         }
         readRecords();
         warnIfWorldReadable(file.toPath());
     }
 
-    private void patchConfig(File file, YamlConfiguration defaults) {
+    private void patchConfig(final File file, final YamlConfiguration defaults) {
         boolean changed = false;
         // migrate old webhooks:* keys to control:* (if control block is absent) then
         // drop webhooks
         if (config.contains("webhooks")) {
-            ConfigurationSection webhooks = config.getConfigurationSection("webhooks");
+            final ConfigurationSection webhooks = config.getConfigurationSection("webhooks");
             if (webhooks != null) {
                 if (!config.contains("control.port")) {
                     config.set("control.port", webhooks.getInt("port", 0));
@@ -129,7 +129,7 @@ public class MineCICDConfig {
             config.set("webhooks", null);
             changed = true;
         }
-        for (String key : defaults.getKeys(true)) {
+        for (final String key : defaults.getKeys(true)) {
             if (!config.contains(key, true)) {
                 config.set(key, defaults.get(key));
                 changed = true;
@@ -141,13 +141,13 @@ public class MineCICDConfig {
             try {
                 config.save(file);
                 hardenPermissions(file.toPath());
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 plugin.getLogger().warning("Unable to save config.yml: " + e.getMessage());
             }
         }
     }
 
-    private boolean ensureActionList(String base) {
+    private boolean ensureActionList(final String base) {
         if (config.contains(base + ".allow")) {
             return false;
         }
@@ -155,37 +155,37 @@ public class MineCICDConfig {
         return true;
     }
 
-    private static void hardenPermissions(java.nio.file.Path file) {
+    private static void hardenPermissions(final java.nio.file.Path file) {
         try {
-            Set<PosixFilePermission> set = EnumSet.noneOf(PosixFilePermission.class);
+            final Set<PosixFilePermission> set = EnumSet.noneOf(PosixFilePermission.class);
             set.add(PosixFilePermission.OWNER_READ);
             set.add(PosixFilePermission.OWNER_WRITE);
             Files.setPosixFilePermissions(file, set);
         } catch (UnsupportedOperationException | java.io.IOException ignored) {
             try {
-                java.io.File f = file.toFile();
+                final java.io.File f = file.toFile();
                 f.setReadable(false, false);
                 f.setWritable(false, false);
                 f.setExecutable(false, false);
                 f.setReadable(true, true);
                 f.setWritable(true, true);
-            } catch (Exception ignored2) {
+            } catch (final Exception ignored2) {
             }
         }
     }
 
-    private void warnIfWorldReadable(java.nio.file.Path file) {
+    private void warnIfWorldReadable(final java.nio.file.Path file) {
         try {
-            Set<PosixFilePermission> perms = Files.getPosixFilePermissions(file);
+            final Set<PosixFilePermission> perms = Files.getPosixFilePermissions(file);
             if (perms.contains(PosixFilePermission.OTHERS_READ) || perms.contains(PosixFilePermission.GROUP_READ)) {
                 plugin.getLogger().warning(file.getFileName() + " is world-readable; run chmod 600 " + file);
             }
-        } catch (Exception ignored) {
+        } catch (final Exception ignored) {
         }
     }
 
     private void readRecords() {
-        ConfigurationSection gitSection = config.getConfigurationSection("git");
+        final ConfigurationSection gitSection = config.getConfigurationSection("git");
         this.git = new Git(
                 gitSection.getString("user", ""),
                 gitSection.getString("pass", ""),
@@ -193,12 +193,12 @@ public class MineCICDConfig {
                 gitSection.getString("email", "minecicd@minecicd.local"),
                 gitSection.getString("branch", "master"));
 
-        ConfigurationSection barSection = config.getConfigurationSection("bossbar");
+        final ConfigurationSection barSection = config.getConfigurationSection("bossbar");
         this.bossBar = new BossBar(barSection.getBoolean("enabled", true), barSection.getInt("duration", 100));
         this.experimentalJarLoading = config.getBoolean("experimental-jar-loading", false);
 
-        ConfigurationSection controlSection = config.getConfigurationSection("control");
-        ConfigurationSection tls = controlSection.getConfigurationSection("tls");
+        final ConfigurationSection controlSection = config.getConfigurationSection("control");
+        final ConfigurationSection tls = controlSection.getConfigurationSection("tls");
         this.control = new Control(
                 controlSection.getString("host", "127.0.0.1"),
                 controlSection.getInt("port", 0),

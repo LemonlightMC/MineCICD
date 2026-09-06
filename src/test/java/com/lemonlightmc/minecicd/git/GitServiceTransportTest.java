@@ -2,6 +2,8 @@ package com.lemonlightmc.minecicd.git;
 
 import org.junit.jupiter.api.Test;
 
+import com.lemonlightmc.minecicd.exceptions.GitException;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 

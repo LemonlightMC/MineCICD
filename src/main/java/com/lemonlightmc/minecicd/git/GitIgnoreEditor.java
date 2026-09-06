@@ -14,20 +14,20 @@ public class GitIgnoreEditor {
 
     private final Path ignoreFile;
 
-    public GitIgnoreEditor(Path serverRoot) {
+    public GitIgnoreEditor(final Path serverRoot) {
         this.ignoreFile = serverRoot.resolve(".gitignore");
     }
 
     public List<String> readEntries() {
-        List<String> lines = lines();
-        int begin = lines.indexOf(BEGIN_MARKER);
-        int end = begin < 0 ? -1 : lines.indexOf(END_MARKER);
+        final List<String> lines = lines();
+        final int begin = lines.indexOf(BEGIN_MARKER);
+        final int end = begin < 0 ? -1 : lines.indexOf(END_MARKER);
         if (begin < 0 || end < begin) {
             return new ArrayList<>();
         }
-        List<String> entries = new ArrayList<>();
+        final List<String> entries = new ArrayList<>();
         for (int i = begin + 1; i < end; i++) {
-            String line = lines.get(i).trim();
+            final String line = lines.get(i).trim();
             if (!line.isEmpty() && !line.startsWith("#")) {
                 entries.add(line);
             }
@@ -35,11 +35,11 @@ public class GitIgnoreEditor {
         return entries;
     }
 
-    public boolean add(String entry) {
-        String normalized = entry.trim();
-        List<String> lines = lines();
-        int begin = lines.indexOf(BEGIN_MARKER);
-        int end = begin < 0 ? -1 : lines.indexOf(END_MARKER);
+    public boolean add(final String entry) {
+        final String normalized = entry.trim();
+        final List<String> lines = lines();
+        final int begin = lines.indexOf(BEGIN_MARKER);
+        final int end = begin < 0 ? -1 : lines.indexOf(END_MARKER);
         if (begin < 0 || end < begin) {
             if (!lines.isEmpty()) {
                 lines.add("");
@@ -65,10 +65,10 @@ public class GitIgnoreEditor {
         return true;
     }
 
-    public boolean remove(String entry) {
-        String normalized = entry.trim();
-        List<String> lines = lines();
-        int begin = lines.indexOf(BEGIN_MARKER);
+    public boolean remove(final String entry) {
+        final String normalized = entry.trim();
+        final List<String> lines = lines();
+        final int begin = lines.indexOf(BEGIN_MARKER);
         int end = begin < 0 ? -1 : lines.indexOf(END_MARKER);
         if (begin < 0 || end < begin) {
             return false;
@@ -94,16 +94,16 @@ public class GitIgnoreEditor {
         }
         try {
             return new ArrayList<>(Files.readAllLines(ignoreFile, StandardCharsets.UTF_8));
-        } catch (IOException e) {
+        } catch (final IOException e) {
             throw new IllegalStateException("Unable to read .gitignore: " + e.getMessage(), e);
         }
     }
 
-    private void write(List<String> lines) {
+    private void write(final List<String> lines) {
         try {
-            String content = String.join("\n", lines) + "\n";
+            final String content = String.join("\n", lines) + "\n";
             Files.write(ignoreFile, content.getBytes(StandardCharsets.UTF_8));
-        } catch (IOException e) {
+        } catch (final IOException e) {
             throw new IllegalStateException("Unable to write .gitignore: " + e.getMessage(), e);
         }
     }

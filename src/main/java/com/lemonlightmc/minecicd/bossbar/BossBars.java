@@ -17,7 +17,7 @@ public class BossBars {
     private int durationTicks;
     private BossBar current;
 
-    public BossBars(MineCICD plugin) {
+    public BossBars(final MineCICD plugin) {
         this.plugin = plugin;
         this.enabled = plugin.config().bossBar().enabled();
         this.durationTicks = plugin.config().bossBar().durationTicks();
@@ -31,21 +31,21 @@ public class BossBars {
         }
     }
 
-    public void show(String path, Map<String, String> placeholders) {
+    public void show(final String path, final Map<String, String> placeholders) {
         show(plugin.messages().get("bossbar-" + path, placeholders));
     }
 
-    public void show(Component name) {
+    public void show(final Component name) {
         if (!enabled) {
             return;
         }
         Threads.marshaled(plugin, () -> showAsyncSafe(name));
     }
 
-    private void showAsyncSafe(Component name) {
+    private void showAsyncSafe(final Component name) {
         removeCurrent();
-        BossBar bar = BossBar.bossBar(name, 1f, BossBar.Color.GREEN, BossBar.Overlay.PROGRESS);
-        for (Player player : Bukkit.getOnlinePlayers()) {
+        final BossBar bar = BossBar.bossBar(name, 1f, BossBar.Color.GREEN, BossBar.Overlay.PROGRESS);
+        for (final Player player : Bukkit.getOnlinePlayers()) {
             if (player.hasPermission("minecicd.notify")) {
                 player.showBossBar(bar);
             }
@@ -62,7 +62,7 @@ public class BossBars {
         if (current == null) {
             return;
         }
-        for (Player player : Bukkit.getOnlinePlayers()) {
+        for (final Player player : Bukkit.getOnlinePlayers()) {
             if (player.hasPermission("minecicd.notify")) {
                 player.hideBossBar(current);
             }

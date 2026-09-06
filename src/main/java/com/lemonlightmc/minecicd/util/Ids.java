@@ -14,7 +14,7 @@ public final class Ids {
         return UUID.randomUUID().toString();
     }
 
-    public static boolean isValidRequestId(String id) {
+    public static boolean isValidRequestId(final String id) {
         return id != null && REQUEST_ID.matcher(id).matches();
     }
 }
