@@ -145,7 +145,7 @@ public class ControlSecurity {
      */
     public void validateActions(final List<Action> actions) {
         for (final Action action : actions) {
-            if (actionsConfig.allowedActions().contains(action.type())) {
+            if (!actionsConfig.allowedActions().contains(action.type())) {
                 throw new RejectException("Action not enabled: " + action);
             }
             switch (action.type()) {

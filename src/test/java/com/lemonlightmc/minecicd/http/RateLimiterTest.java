@@ -1,5 +1,6 @@
 package com.lemonlightmc.minecicd.http;
 
+import com.lemonlightmc.minecicd.MineCICDConfig.RateLimit;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -9,13 +10,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Verifies the bounded, expiring per-IP failure limiter used by ControlServer (S-08).
  */
-class FailureLimiterTest {
+class RateLimiterTest {
 
-    private static final long WINDOW = 10_000L;
+    private static final long WINDOW_MILLIS = 10_000L;
+
+    private static RateLimiter limiter(int maxEntries, int failureLimit) {
+        return new RateLimiter(new RateLimit(true, false, failureLimit, maxEntries, WINDOW_MILLIS / 1000));
+    }
 
     @Test
     void rateLimitsAfterFiveFailuresWithinWindow() {
-        FailureLimiter limiter = new FailureLimiter(100, WINDOW);
+        RateLimiter limiter = limiter(100, 5);
         long now = 1_000_000L;
         for (int i = 0; i < 5; i++) {
             assertFalse(limiter.isRateLimited("1.2.3.4", now));
@@ -26,30 +31,30 @@ class FailureLimiterTest {
 
     @Test
     void windowExpiryResetsTheCounter() {
-        FailureLimiter limiter = new FailureLimiter(100, WINDOW);
+        RateLimiter limiter = limiter(100, 5);
         long now = 1_000_000L;
         for (int i = 0; i < 5; i++) {
             limiter.recordFailure("1.2.3.4", now);
         }
         assertTrue(limiter.isRateLimited("1.2.3.4", now));
         // after the window, the IP is no longer rate limited
-        assertFalse(limiter.isRateLimited("1.2.3.4", now + WINDOW + 1));
+        assertFalse(limiter.isRateLimited("1.2.3.4", now + WINDOW_MILLIS + 1));
     }
 
     @Test
     void expiredEntriesArePurged() {
-        FailureLimiter limiter = new FailureLimiter(100, WINDOW);
+        RateLimiter limiter = limiter(100, 5);
         long now = 1_000_000L;
         limiter.recordFailure("a", now);
         limiter.recordFailure("b", now);
         assertEquals(2, limiter.size());
-        limiter.purgeExpired(now + WINDOW + 1);
+        limiter.purgeExpired(now + WINDOW_MILLIS + 1);
         assertEquals(0, limiter.size());
     }
 
     @Test
     void distinctClientsCannotGrowCacheBeyondCap() {
-        FailureLimiter limiter = new FailureLimiter(10, WINDOW);
+        RateLimiter limiter = limiter(10, 5);
         long now = 1_000_000L;
         for (int i = 0; i < 100; i++) {
             limiter.recordFailure("client-" + i, now);
@@ -59,7 +64,7 @@ class FailureLimiterTest {
 
     @Test
     void unknownIpIsHandledLikeAnyOther() {
-        FailureLimiter limiter = new FailureLimiter(100, WINDOW);
+        RateLimiter limiter = limiter(100, 5);
         long now = 1_000_000L;
         for (int i = 0; i < 5; i++) {
             limiter.recordFailure("unknown", now);
@@ -69,7 +74,7 @@ class FailureLimiterTest {
 
     @Test
     void evictsOldestWhenFullOfFreshEntries() {
-        FailureLimiter limiter = new FailureLimiter(2, WINDOW);
+        RateLimiter limiter = limiter(2, 5);
         long now = 1_000_000L;
         limiter.recordFailure("old", now);
         limiter.recordFailure("new", now + 1);

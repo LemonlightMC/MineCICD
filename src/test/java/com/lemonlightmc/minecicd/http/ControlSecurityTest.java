@@ -1,13 +1,15 @@
 package com.lemonlightmc.minecicd.http;
 
+import com.lemonlightmc.minecicd.MineCICDConfig;
 import com.lemonlightmc.minecicd.git.CommitActions;
 import com.lemonlightmc.minecicd.git.CommitActions.Action;
 import com.lemonlightmc.minecicd.git.CommitActions.ActionType;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.util.EnumSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -15,16 +17,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class ControlSecurityTest {
 
     private ControlSecurity security() {
-        return new ControlSecurity(300,
-                Map.of(ActionType.PULL, true,
-                        ActionType.PUSH, true,
-                        ActionType.RESTART, true,
-                        ActionType.GLOBAL_RELOAD, false,
-                        ActionType.RELOAD_PLUGIN, true,
-                        ActionType.COMMAND, true,
-                        ActionType.SCRIPT, true),
-                List.of("say", "save-all"),
-                List.of("deploy", "backup.sh"));
+        return new ControlSecurity(300, new MineCICDConfig.Actions(
+                EnumSet.of(ActionType.PULL, ActionType.PUSH, ActionType.RESTART,
+                        ActionType.RELOAD_PLUGIN, ActionType.COMMAND, ActionType.SCRIPT),
+                Set.of("say", "save-all"),
+                Set.of("deploy", "backup.sh")));
     }
 
     private static Action action(ActionType type, String arg) {
@@ -125,10 +122,10 @@ class ControlSecurityTest {
 
     @Test
     void scriptNameValidation() {
-        org.junit.jupiter.api.Assertions.assertTrue(ControlSecurity.isAllowedScriptName("backup.sh"));
-        org.junit.jupiter.api.Assertions.assertTrue(ControlSecurity.isAllowedScriptName("deploy"));
-        org.junit.jupiter.api.Assertions.assertFalse(ControlSecurity.isAllowedScriptName("../x"));
-        org.junit.jupiter.api.Assertions.assertFalse(ControlSecurity.isAllowedScriptName("a/b"));
-        org.junit.jupiter.api.Assertions.assertFalse(ControlSecurity.isAllowedScriptName(""));
+        org.junit.jupiter.api.Assertions.assertTrue(ControlSecurity.isValidScriptName("backup.sh"));
+        org.junit.jupiter.api.Assertions.assertTrue(ControlSecurity.isValidScriptName("deploy"));
+        org.junit.jupiter.api.Assertions.assertFalse(ControlSecurity.isValidScriptName("../x"));
+        org.junit.jupiter.api.Assertions.assertFalse(ControlSecurity.isValidScriptName("a/b"));
+        org.junit.jupiter.api.Assertions.assertFalse(ControlSecurity.isValidScriptName(""));
     }
 }
