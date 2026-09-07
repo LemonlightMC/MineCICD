@@ -38,14 +38,14 @@ public final class MineCICD extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        serverRoot = getDataFolder().getParentFile().getParentFile().toPath();
-
         if (!getDataFolder().exists()) {
             getDataFolder().mkdirs();
         }
         saveDefaultExampleScript();
 
         this.config = new MineCICDConfig(this);
+        this.serverRoot = resolveServerRoot();
+
         this.messages = new Messages(this);
         this.bossBars = new BossBars(this);
         this.gitService = new GitService(this);
@@ -92,6 +92,7 @@ public final class MineCICD extends JavaPlugin {
     public void reloadPlugin() {
         onDisable();
         config.load();
+        this.serverRoot = resolveServerRoot();
         messages.load();
         bossBars.reload();
         secretManager.load();
@@ -145,6 +146,22 @@ public final class MineCICD extends JavaPlugin {
 
     public Path serverRoot() {
         return serverRoot;
+    }
+
+    /**
+     * Resolves the server root path from config. When {@code git.server-root} is
+     * set, it is resolved relative to the Bukkit server root (the parent of
+     * {@code plugins/MineCICD/}). This allows the Minecraft server to live in a
+     * subdirectory of a larger Git repository (monorepo). When empty, the
+     * server root equals the Bukkit server root (default behavior).
+     */
+    private Path resolveServerRoot() {
+        final Path bukkitRoot = getDataFolder().getParentFile().getParentFile().toPath();
+        final String sub = config.git().serverRoot();
+        if (sub == null || sub.isBlank()) {
+            return bukkitRoot;
+        }
+        return bukkitRoot.resolve(sub).normalize();
     }
 
     public MineCICDConfig config() {

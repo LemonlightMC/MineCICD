@@ -57,7 +57,18 @@ public class GitService {
     }
 
     public boolean isInitialized() {
-        return Files.exists(plugin.serverRoot().resolve(".git"));
+        if (Files.exists(plugin.serverRoot().resolve(".git"))) {
+            return true;
+        }
+        // In a monorepo, .git may live in a parent directory. Search upward.
+        Path current = plugin.serverRoot().getParent();
+        while (current != null) {
+            if (Files.exists(current.resolve(".git"))) {
+                return true;
+            }
+            current = current.getParent();
+        }
+        return false;
     }
 
     public synchronized PullResult pull(final boolean force) {
@@ -319,6 +330,9 @@ public class GitService {
                 .setWorkTree(plugin.serverRoot().toFile())
                 .findGitDir(plugin.serverRoot().toFile())
                 .build();
+        if (opened.getDirectory() == null) {
+            throw new IOException("No .git directory found (searched up from " + plugin.serverRoot() + ")");
+        }
         repo = opened;
         git = new Git(opened);
     }
@@ -328,11 +342,22 @@ public class GitService {
             if (isInitialized()) {
                 open();
             } else {
+                // Server root is a subdirectory but no .git found anywhere above —
+                // cannot auto-initialise in a monorepo context.
+                if (!plugin.serverRoot().equals(
+                        plugin.getDataFolder().getParentFile().getParentFile().toPath())) {
+                    throw new GitException(
+                            "No Git repository found. When using git.server-root, "
+                                    + "initialise the repository at the repo root first, then set server-root "
+                                    + "to point to the Minecraft server subdirectory.");
+                }
                 git = Git.init().setDirectory(plugin.serverRoot().toFile())
                         .setInitialBranch(plugin.config().git().branch())
                         .call();
                 repo = git.getRepository();
             }
+        } catch (final GitException e) {
+            throw e;
         } catch (final Exception e) {
             throw new GitException("Unable to open/initialize repository: " + rootMessage(e), e);
         }
