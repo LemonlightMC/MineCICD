@@ -157,10 +157,10 @@ public final class MineCICD extends JavaPlugin {
      * server root equals the Bukkit server root (default behavior).
      */
     private Path resolveServerRoot() {
-        getLogger().info(getDataFolder().toPath().toString());
-        getLogger().info(getDataFolder().getParentFile().toPath().toString());
+        getLogger().info(getDataFolder().toPath().toAbsolutePath().getParent().toString());
+        getLogger().info(getDataFolder().toPath().toAbsolutePath().getParent().getParent().toString());
 
-        final Path bukkitRoot = getDataFolder().getParentFile().getParentFile().toPath();
+        final Path bukkitRoot = getDataFolder().toPath().toAbsolutePath().getParent().getParent().toString();
         final String sub = config.git().serverRoot();
         if (sub == null || sub.isBlank()) {
             return bukkitRoot;
