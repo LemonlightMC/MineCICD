@@ -160,7 +160,7 @@ public final class MineCICD extends JavaPlugin {
         getLogger().info(getDataFolder().toPath().toAbsolutePath().getParent().toString());
         getLogger().info(getDataFolder().toPath().toAbsolutePath().getParent().getParent().toString());
 
-        final Path bukkitRoot = getDataFolder().toPath().toAbsolutePath().getParent().getParent().toString();
+        final Path bukkitRoot = getDataFolder().toPath().toAbsolutePath().getParent().getParent();
         final String sub = config.git().serverRoot();
         if (sub == null || sub.isBlank()) {
             return bukkitRoot;
