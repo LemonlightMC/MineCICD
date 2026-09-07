@@ -46,7 +46,7 @@ jobs:
           distribution: temurin
           java-version: 21
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
           # Forks must not write to the cache (cache poisoning).
           cache-read-only: ${{ github.event_name == 'pull_request' }}
