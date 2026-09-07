@@ -45,6 +45,7 @@ public final class MineCICD extends JavaPlugin {
 
         this.config = new MineCICDConfig(this);
         this.serverRoot = resolveServerRoot();
+        getLogger().info(this.serverRoot.toString());
 
         this.messages = new Messages(this);
         this.bossBars = new BossBars(this);
@@ -139,8 +140,8 @@ public final class MineCICD extends JavaPlugin {
             scriptsDir.mkdirs();
         }
         final File example = new File(scriptsDir, "example_script.sh");
-        if (!example.exists() && getResource("example_script.sh") != null) {
-            saveResource("example_script.sh", false);
+        if (!example.exists() && getResource("scripts/example_script.sh") != null) {
+            saveResource("scripts/example_script.sh", false);
         }
     }
 
@@ -156,6 +157,9 @@ public final class MineCICD extends JavaPlugin {
      * server root equals the Bukkit server root (default behavior).
      */
     private Path resolveServerRoot() {
+        getLogger().info(getDataFolder().toPath().toString());
+        getLogger().info(getDataFolder().getParentFile().toPath().toString());
+
         final Path bukkitRoot = getDataFolder().getParentFile().getParentFile().toPath();
         final String sub = config.git().serverRoot();
         if (sub == null || sub.isBlank()) {
