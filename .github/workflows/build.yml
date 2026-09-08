@@ -80,7 +80,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: MineCICD
-          path: build/libs/MineCICD-*.jar
+          path: build/libs/MineCICD.jar
           if-no-files-found: error
           archive: false
           retention-days: 7
