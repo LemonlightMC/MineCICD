@@ -36,7 +36,7 @@ MineCICD turns your Minecraft server root into a Git repository, letting you tra
 2. Drop the JAR into your server's `plugins/` folder.
 3. Restart the server. MineCICD generates its default config and scripts on first boot.
 4. Edit `plugins/MineCICD/config.yml` with your Git credentials and repository URL (see [Configuration](#configuration)).
-5. Run `/minecicd reload` to apply the config, then `/minecicd pull` to clone (or fetch) the repository.
+5. Run `/minecicd reload` to apply the config, then `/minecicd init` to initialize the repo locally (or `/minecicd pull` to clone it from the remote).
 
 ---
 
@@ -107,9 +107,12 @@ bossbar:
 
 ## Basic Usage
 
-The typical workflow is: **add → commit → push → pull**.
+The typical workflow is: **init → add → commit → push → pull**.
 
 ```
+# 0. Initialize the local repository (does not pull or push)
+/minecicd init
+
 # 1. Track files or directories
 /minecicd add plugins/MyPlugin/
 /minecicd add server.properties
@@ -199,7 +202,9 @@ All commands are subcommands of `/minecicd` (alias: `/mcicd`).
 
 | Command                                    | Description                                                               |
 | ------------------------------------------ | ------------------------------------------------------------------------- |
-| `/minecicd pull [force]`                   | Fetch and merge remote changes. First run initialises the repo.           |
+| `/minecicd init`                           | Initialize the local repo without pulling or pushing.                     |
+| `/minecicd deinit`                         | Remove the local `.git` metadata (no pull or push; remote untouched).     |
+| `/minecicd pull [force]`                   | Fetch and merge remote changes. First run clones the repo.                |
 | `/minecicd push <message>`                 | Stage all changes, commit, and push.                                      |
 | `/minecicd add <path>`                     | Add a file or directory to the managed `.gitignore` and track it.         |
 | `/minecicd remove <path>`                  | Remove a file or directory from tracking.                                 |
@@ -272,7 +277,7 @@ Version 3.0.0 is a complete rewrite. The config format has changed and the plugi
 
 | Problem                                      | Fix                                                                                                           |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `/minecicd pull` says "repo not initialised" | Run `/minecicd pull` again — first run clones the repo. Check that `git.repo` is correct.                     |
+| `/minecicd pull` says "repo not initialised" | Run `/minecicd init` (or `/minecicd pull`) to initialize the repo. Check that `git.repo` is correct. |
 | Push fails with 401 / 403                    | Verify your Personal Access Token has **contents: read + write** scope. Check `git.user` and `git.pass`.      |
 | SSH remote fails                             | Ensure the server's SSH key is added as a deploy key on the remote. Check `ssh-keyscan` output.               |
 | Control API returns 403                      | The HMAC signature is invalid. Ensure `control.secret` matches on server and client. Check timestamp skew.    |

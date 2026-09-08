@@ -31,6 +31,8 @@ fresh, friendlier, and safer rewrite.
 ## Feature checklist (parity + improvements)
 
 - [x] Repo root == server root; tracking controlled via plugin-managed `.gitignore` section
+- [x] `/minecicd init` — initialize the local repo (configured branch, local `origin` remote) with no fetch/pull/push
+- [x] `/minecicd deinit` — remove the local repo's `.git` metadata only; refuses monorepo checkouts and never touches the remote
 - [x] `/minecicd pull [force]` — init repo on first run, then fetch + merge (THEIRS) + apply
 - [x] `/minecicd push <message>` — stage all, commit, push (adds author/committer identity)
 - [x] `/minecicd add <path>` / `/minecicd remove <path>` — edits the plugin `.gitignore` section, commits, pushes

@@ -212,6 +212,31 @@ Orchestrator. Receives command or control-API requests, queues them to the worke
 
 ## Git Operations Flow
 
+### Init
+
+```
+/minecicd init
+    │
+    ├─ Already a repo? ──► notify "already initialized"
+    │
+    └─ git init (configured branch)
+         ├─ git.repo set? ──► add/update origin remote (local config only)
+         └─ no fetch, pull, push, or commit
+```
+
+### Deinit
+
+```
+/minecicd deinit
+    │
+    ├─ Not a repo? ──► notify "not initialized"
+    │
+    ├─ .git outside server root? ──► refuse (monorepo, managed by parent repo)
+    │
+    └─ delete .git metadata recursively
+         └─ working-tree files and remote untouched
+```
+
 ### Pull
 
 ```

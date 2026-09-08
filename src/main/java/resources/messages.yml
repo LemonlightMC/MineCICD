@@ -11,6 +11,16 @@ reload-usage: "<red>Invalid arguments. Usage: /{label} reload"
 reload-failed: "<red>Error reloading: {error}"
 reload-success: "<green>Configuration, messages, control API, and secrets reloaded successfully."
 
+init-usage: "<red>Invalid arguments. Usage: /{label} init"
+init-failed: "<red>Error initializing the repository: {error}"
+init-success: "<green>Repository initialized successfully. Use '/{label} add' to track files and '/{label} push' to upload them."
+init-already-initialized: "<green>Repository is already initialized."
+
+deinit-usage: "<red>Invalid arguments. Usage: /{label} deinit"
+deinit-failed: "<red>Error deinitializing the repository: {error}"
+deinit-success: "<green>Repository deinitialized successfully. The remote repository is not affected."
+deinit-not-initialized: "<yellow>Repository is not initialized."
+
 pull-usage: "<red>Invalid arguments. Usage: /{label} pull [force]"
 pull-failed: "<red>Error pulling repo: {error}"
 pull-aborted: "<red>There are unpushed changes in the repository. Please push these changes, undo them, or overwrite with '/{label} pull force'."
@@ -71,6 +81,8 @@ script-success: "<green>Script ran successfully."
 
 invalid-subcommand: "<red>Unknown command. Use /{label} help for a list of commands."
 help:
+  - "<green>/{label} init <gray>- <aqua>Initializes the local repository (no pull or push)."
+  - "<green>/{label} deinit <gray>- <aqua>Removes the local repository (no pull or push)."
   - "<green>/{label} pull <gray>- <aqua>Pulls the latest changes from the remote or sets up the local repository if run for the first time."
   - "<green>/{label} push <commit message> <gray>- <aqua>Pushes the latest changes to the remote."
   - "<green>/{label} add <file / 'directory/'> <gray>- <aqua>Adds a file or directory to the repository."
@@ -114,6 +126,10 @@ resolve-success-repo-reset: "<green>Repository reset successfully. Proceed with 
 resolve-success-reset-local-changes: "<green>Local changes reset successfully."
 
 bossbar-pull-aborted-changes: "Pull aborted - Changes in active repository"
+bossbar-init: "Initializing repository"
+bossbar-init-failed: "Failed to initialize repository"
+bossbar-deinit: "Deinitializing repository"
+bossbar-deinit-failed: "Failed to deinitialize repository"
 bossbar-reloaded: "Reloaded successfully"
 bossbar-pulling: "Pulling changes from remote"
 bossbar-pulled-changes: "Changes pulled from remote"

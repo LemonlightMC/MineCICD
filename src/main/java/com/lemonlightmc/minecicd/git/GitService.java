@@ -37,6 +37,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.TreeSet;
@@ -71,6 +72,36 @@ public class GitService {
         return false;
     }
 
+    /**
+     * Initializes the local repository (without any network activity).
+     * Creates the repository with the configured initial branch and, when a
+     * remote is configured, pins the {@code origin} remote locally. Does not
+     * fetch, pull, push, or create commits.
+     *
+     * @return {@code true} if the repository was freshly created, {@code false}
+     *         if it was already initialized
+     * @throws GitException if the server root is part of a monorepo checkout
+     *                      that is not yet a repository, or the configured
+     *                      remote URL is invalid
+     */
+    public synchronized boolean init() {
+        if (isInitialized()) {
+            return false;
+        }
+        if (!plugin.remoteRoot().isEmpty()) {
+            throw new GitException(
+                    "No Git repository found. When using git.remote-server-root, "
+                            + "the server root on the host must sit at that path inside an existing "
+                            + "repository checkout; initialise the parent repository instead.");
+        }
+        openOrInit();
+        final String url = plugin.config().git().repo();
+        if (url != null && !url.isBlank()) {
+            ensureRemote();
+        }
+        return true;
+    }
+
     public synchronized PullResult pull(final boolean force) {
         final boolean alreadyInitialized = isInitialized();
         openOrInit();
@@ -81,6 +112,43 @@ public class GitService {
         final List<RevCommit> commits = commitsInRange(oldTip, newTip);
         syncToConfiguredBranch(force);
         return new PullResult(commits, !alreadyInitialized);
+    }
+
+    /**
+     * Removes the local repository metadata ({@code .git}) without touching any
+     * working-tree files or the remote. Refuses to act when the repository is
+     * not initialized, and refuses when {@code .git} lives outside the server
+     * root (a monorepo checkout managed by a parent repository).
+     *
+     * @return {@code true} if the repository was removed, {@code false} if it
+     *         was not initialized
+     * @throws GitException if the encountered repository cannot be safely
+     *                      removed from the server root
+     */
+    public synchronized boolean deinit() {
+        if (!isInitialized()) {
+            return false;
+        }
+        try {
+            open();
+        } catch (final IOException e) {
+            throw new GitException("Unable to open repository: " + rootMessage(e), e);
+        }
+        final Path gitDir = repo.getDirectory().toPath().toAbsolutePath().normalize();
+        final Path root = plugin.serverRoot().toAbsolutePath().normalize();
+        if (!gitDir.startsWith(root)) {
+            throw new GitException(
+                    "Refusing to deinitialize: the repository's .git directory (" + gitDir
+                            + ") lives outside the server root. This is a monorepo checkout managed by a "
+                            + "parent repository.");
+        }
+        close();
+        try {
+            deleteRecursively(gitDir);
+        } catch (final IOException e) {
+            throw new GitException("Unable to remove .git: " + rootMessage(e), e);
+        }
+        return true;
     }
 
     public synchronized PushResult push(final String message) {
@@ -758,5 +826,16 @@ public class GitService {
         }
         final String message = current.getMessage();
         return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
+    }
+
+    private static void deleteRecursively(final Path dir) throws IOException {
+        if (!Files.exists(dir)) {
+            return;
+        }
+        try (java.util.stream.Stream<Path> paths = Files.walk(dir)) {
+            for (final Path p : paths.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(p);
+            }
+        }
     }
 }

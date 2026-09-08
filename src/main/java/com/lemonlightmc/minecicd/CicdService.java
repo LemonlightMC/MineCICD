@@ -51,6 +51,46 @@ public class CicdService implements ControlServer.Delegate {
 
     // ------------------------------------------------------------------ commands
 
+    public CompletableFuture<Boolean> init(final CommandSender sender) {
+        return enqueue(() -> {
+            try {
+                final boolean created = plugin.gitService().init();
+                if (created) {
+                    plugin.messages().send(sender, "init-success");
+                } else {
+                    plugin.messages().send(sender, "init-already-initialized");
+                }
+                plugin.bossBars().show("init", Map.of());
+                return Boolean.TRUE;
+            } catch (final Exception e) {
+                plugin.messages().send(sender, "init-failed", Map.of("error", safeMessage(e)));
+                plugin.bossBars().show("init-failed", Map.of());
+                e.printStackTrace();
+                return Boolean.FALSE;
+            }
+        });
+    }
+
+    public CompletableFuture<Boolean> deinit(final CommandSender sender) {
+        return enqueue(() -> {
+            try {
+                final boolean removed = plugin.gitService().deinit();
+                if (removed) {
+                    plugin.messages().send(sender, "deinit-success");
+                } else {
+                    plugin.messages().send(sender, "deinit-not-initialized");
+                }
+                plugin.bossBars().show("deinit", Map.of());
+                return Boolean.TRUE;
+            } catch (final Exception e) {
+                plugin.messages().send(sender, "deinit-failed", Map.of("error", safeMessage(e)));
+                plugin.bossBars().show("deinit-failed", Map.of());
+                e.printStackTrace();
+                return Boolean.FALSE;
+            }
+        });
+    }
+
     public CompletableFuture<Boolean> pull(final CommandSender sender, final boolean force) {
         return enqueue(() -> {
             try {

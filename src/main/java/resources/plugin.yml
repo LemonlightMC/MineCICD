@@ -16,6 +16,8 @@ permissions:
     default: op
     children:
       minecicd.use: true
+      minecicd.init: true
+      minecicd.deinit: true
       minecicd.pull: true
       minecicd.push: true
       minecicd.add: true

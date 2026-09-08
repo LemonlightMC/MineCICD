@@ -27,6 +27,18 @@ public class MineCICDCommand {
 
     public LiteralCommandNode<CommandSourceStack> build() {
         return Commands.literal("minecicd")
+                .then(Commands.literal("init")
+                        .requires(req("minecicd.init"))
+                        .executes(ctx -> {
+                            service.init(sender(ctx));
+                            return Command.SINGLE_SUCCESS;
+                        }))
+                .then(Commands.literal("deinit")
+                        .requires(req("minecicd.deinit"))
+                        .executes(ctx -> {
+                            service.deinit(sender(ctx));
+                            return Command.SINGLE_SUCCESS;
+                        }))
                 .then(Commands.literal("pull")
                         .requires(req("minecicd.pull"))
                         .then(Commands.literal("force")
