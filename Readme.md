@@ -52,13 +52,13 @@ git:
   pass: "" # Password or Personal Access Token
   repo: "" # Remote repository URL (https:// or ssh://)
   branch: "master"
-  server-root: "" # Optional: subdirectory of the repo where this server lives (monorepo)
+  remote-server-root: "" # Optional: path of the server root within the repo (monorepo)
 ```
 
 - **HTTPS remotes**: Set both `user` and `pass` to your Personal Access Token.
 - **SSH remotes**: Use an SSH URL (`ssh://git@github.com/user/repo.git` or `git@github.com:user/repo.git`) with a deploy key. Leave `user` / `pass` empty.
 - Plain `git://` URLs are rejected (no auth or encryption).
-- **Monorepo (`server-root`)**: If your Minecraft server lives in a subfolder of a larger repository (e.g. `servers/lobby`), set `server-root` to that relative path. MineCICD will treat that folder as the server root, operating only on it, while the `.git` directory is discovered by searching upward to the repository root. Leave `server-root` empty when the server root *is* the repository root.
+- **Monorepo (`remote-server-root`)**: `remote-server-root` is the path of the server root **within** the repository (on the remote). On the host, the server root is *always* the folder that contains `plugins/` (the parent of `plugins/MineCICD/`) — it is never derived from this setting. Leave it empty when the server root *is* the repository root. For a monorepo (e.g. the server's files live under `servers/lobby/` in the remote), set it to `servers/lobby` and make sure the host server folder physically sits at that path inside the repository checkout; the `.git` directory is then discovered by searching upward to the repository root.
 
 ### Control API
 

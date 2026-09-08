@@ -11,11 +11,13 @@ git:
   # Use this to set up development servers, production servers, and test servers and the like
   # This has an effect on everything from pushing, pulling, and the control API
   branch: "master"
-  # Subdirectory within the repository where this Minecraft server lives (monorepo support).
+  # Path of the server root WITHIN the repository (on the remote), for monorepos.
+  # On the host, the server root is always the folder that contains plugins/.
   # Leave empty if the server root IS the repository root (default).
-  # Example: "servers/lobby" — the plugin will operate on that subdirectory,
-  # while .git is found by searching upward to the repository root.
-  server-root: ""
+  # Example: "servers/lobby" — the server's files live under servers/lobby/ in the
+  # remote repository, and the host server folder must sit at that path inside the
+  # repository checkout (.git is then found by searching upward).
+  remote-server-root: ""
 
 # Whether experimental jar unloading and loading should be enabled
 # This requires PlugManX to be installed and working on your server

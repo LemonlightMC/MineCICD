@@ -26,7 +26,7 @@ import java.util.Set;
  */
 public class MineCICDConfig {
 
-    public record Git(String user, String pass, String repo, String email, String branch, String serverRoot) {
+    public record Git(String user, String pass, String repo, String email, String branch, String remoteServerRoot) {
     }
 
     public record BossBar(boolean enabled, int durationTicks) {
@@ -129,6 +129,14 @@ public class MineCICDConfig {
             config.set("webhooks", null);
             changed = true;
         }
+        // migrate legacy git.server-root key to git.remote-server-root
+        if (config.contains("git.server-root")) {
+            if (!config.contains("git.remote-server-root")) {
+                config.set("git.remote-server-root", config.getString("git.server-root", ""));
+            }
+            config.set("git.server-root", null);
+            changed = true;
+        }
         for (final String key : defaults.getKeys(true)) {
             if (!config.contains(key, true)) {
                 config.set(key, defaults.get(key));
@@ -192,7 +200,7 @@ public class MineCICDConfig {
                 gitSection.getString("repo", ""),
                 gitSection.getString("email", "minecicd@minecicd.local"),
                 gitSection.getString("branch", "master"),
-                gitSection.getString("server-root", ""));
+                gitSection.getString("remote-server-root", ""));
 
         final ConfigurationSection barSection = config.getConfigurationSection("bossbar");
         this.bossBar = new BossBar(barSection.getBoolean("enabled", true), barSection.getInt("duration", 100));

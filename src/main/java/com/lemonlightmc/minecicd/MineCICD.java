@@ -35,6 +35,7 @@ public final class MineCICD extends JavaPlugin {
     private volatile String controlAddress = "disabled";
     private boolean resumed;
     private Path serverRoot;
+    private String remoteRoot;
 
     @Override
     public void onEnable() {
@@ -44,7 +45,8 @@ public final class MineCICD extends JavaPlugin {
         saveDefaultExampleScript();
 
         this.config = new MineCICDConfig(this);
-        this.serverRoot = resolveServerRoot();
+        this.serverRoot = hostServerRoot();
+        this.remoteRoot = normalizeRemoteRoot(config.git().remoteServerRoot());
 
         this.messages = new Messages(this);
         this.bossBars = new BossBars(this);
@@ -92,7 +94,8 @@ public final class MineCICD extends JavaPlugin {
     public void reloadPlugin() {
         onDisable();
         config.load();
-        this.serverRoot = resolveServerRoot();
+        this.serverRoot = hostServerRoot();
+        this.remoteRoot = normalizeRemoteRoot(config.git().remoteServerRoot());
         messages.load();
         bossBars.reload();
         secretManager.load();
@@ -144,24 +147,55 @@ public final class MineCICD extends JavaPlugin {
         }
     }
 
+    /**
+     * The server root on the host: always the folder that contains
+     * {@code plugins/}, i.e. the parent of {@code plugins/MineCICD/}. Never
+     * derived from config — {@code git.remote-server-root} only describes where
+     * that folder lives within the Git repository, not where it is on disk.
+     */
     public Path serverRoot() {
         return serverRoot;
     }
 
     /**
-     * Resolves the server root path from config. When {@code git.server-root} is
-     * set, it is resolved relative to the Bukkit server root (the parent of
-     * {@code plugins/MineCICD/}). This allows the Minecraft server to live in a
-     * subdirectory of a larger Git repository (monorepo). When empty, the
-     * server root equals the Bukkit server root (default behavior).
+     * The path of the server root <em>within</em> the Git repository (on the
+     * remote), e.g. {@code servers/lobby} in a monorepo. Empty string means the
+     * server root IS the repository root.
      */
-    private Path resolveServerRoot() {
-        final Path bukkitRoot = getDataFolder().toPath().toAbsolutePath().getParent().getParent();
-        final String sub = config.git().serverRoot();
-        if (sub == null || sub.isBlank()) {
-            return bukkitRoot;
+    public String remoteRoot() {
+        return remoteRoot;
+    }
+
+    private Path hostServerRoot() {
+        return getDataFolder().toPath().toAbsolutePath().getParent().getParent();
+    }
+
+    /**
+     * Normalizes the configured repository-relative path: forward slashes only,
+     * no leading {@code /} or {@code ./}, no trailing slash, and no {@code .}
+     * or {@code ..} segments. A blank value yields the empty string (the
+     * repository root).
+     */
+    private static String normalizeRemoteRoot(final String configured) {
+        if (configured == null || configured.isBlank()) {
+            return "";
         }
-        return bukkitRoot.resolve(sub).normalize();
+        String p = configured.trim().replace('\\', '/');
+        while (p.startsWith("./")) {
+            p = p.substring(2);
+        }
+        while (p.startsWith("/")) {
+            p = p.substring(1);
+        }
+        while (p.endsWith("/")) {
+            p = p.substring(0, p.length() - 1);
+        }
+        for (final String segment : p.split("/")) {
+            if (".".equals(segment) || "..".equals(segment)) {
+                return "";
+            }
+        }
+        return p;
     }
 
     public MineCICDConfig config() {

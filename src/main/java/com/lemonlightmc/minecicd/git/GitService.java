@@ -341,16 +341,14 @@ public class GitService {
         try {
             if (isInitialized()) {
                 open();
+            } else if (!plugin.remoteRoot().isEmpty()) {
+                // A remote root path means the server folder is part of an existing
+                // repository checkout — never auto-initialise in that context.
+                throw new GitException(
+                        "No Git repository found. When using git.remote-server-root, "
+                                + "the server root on the host must sit at that path inside an existing "
+                                + "repository checkout; initialise the repository first.");
             } else {
-                // Server root is a subdirectory but no .git found anywhere above —
-                // cannot auto-initialise in a monorepo context.
-                if (!plugin.serverRoot().equals(
-                        plugin.getDataFolder().toPath().getParent().getParent())) {
-                    throw new GitException(
-                            "No Git repository found. When using git.server-root, "
-                                    + "initialise the repository at the repo root first, then set server-root "
-                                    + "to point to the Minecraft server subdirectory.");
-                }
                 git = Git.init().setDirectory(plugin.serverRoot().toFile())
                         .setInitialBranch(plugin.config().git().branch())
                         .call();
