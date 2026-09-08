@@ -77,6 +77,7 @@ public class CicdService implements ControlServer.Delegate {
             } catch (final Exception e) {
                 plugin.messages().send(sender, "pull-failed", Map.of("error", safeMessage(e)));
                 plugin.bossBars().show("pull-failed", Map.of());
+                e.printStackTrace();
                 return Boolean.FALSE;
             }
         });
@@ -91,7 +92,7 @@ public class CicdService implements ControlServer.Delegate {
                 if (action.type() == ActionType.PULL) {
                     continue;
                 }
-                // C-02: gate commit actions through same policy as HTTP control API
+                // gate commit actions through same policy as HTTP control API
                 try {
                     plugin.security().validateActions(List.of(action));
                 } catch (final ControlSecurity.RejectException e) {
@@ -121,6 +122,7 @@ public class CicdService implements ControlServer.Delegate {
             } catch (final Exception e) {
                 plugin.messages().send(sender, "push-failed", Map.of("error", safeMessage(e)));
                 plugin.bossBars().show("push-failed", Map.of());
+                e.printStackTrace();
                 return Boolean.FALSE;
             }
         });
@@ -136,6 +138,7 @@ public class CicdService implements ControlServer.Delegate {
             } catch (final Exception e) {
                 plugin.messages().send(sender, "add-failed", Map.of("error", safeMessage(e)));
                 plugin.bossBars().show("adding-failed", Map.of());
+                e.printStackTrace();
                 return Boolean.FALSE;
             }
         });
@@ -151,6 +154,7 @@ public class CicdService implements ControlServer.Delegate {
             } catch (final Exception e) {
                 plugin.messages().send(sender, "remove-failed", Map.of("error", safeMessage(e)));
                 plugin.bossBars().show("removing-failed", Map.of());
+                e.printStackTrace();
                 return Boolean.FALSE;
             }
         });
@@ -166,6 +170,7 @@ public class CicdService implements ControlServer.Delegate {
             } catch (final Exception e) {
                 plugin.messages().send(sender, "reset-failed", Map.of("error", safeMessage(e)));
                 plugin.bossBars().show("reset-failed", Map.of());
+                e.printStackTrace();
                 return Boolean.FALSE;
             }
         });
@@ -181,6 +186,7 @@ public class CicdService implements ControlServer.Delegate {
             } catch (final Exception e) {
                 plugin.messages().send(sender, "revert-failed", Map.of("error", safeMessage(e)));
                 plugin.bossBars().show("revert-failed", Map.of());
+                e.printStackTrace();
                 return Boolean.FALSE;
             }
         });
@@ -197,6 +203,7 @@ public class CicdService implements ControlServer.Delegate {
                 final String message = safeMessage(e);
                 plugin.messages().send(sender, "rollback-failed", Map.of("error", message));
                 plugin.bossBars().show("reset-failed", Map.of());
+                e.printStackTrace();
                 return Boolean.FALSE;
             }
         });
@@ -230,6 +237,7 @@ public class CicdService implements ControlServer.Delegate {
             } catch (final ScriptException e) {
                 plugin.messages().send(sender, "script-failed", Map.of("error", e.getMessage()));
                 plugin.bossBars().show("script-failed", Map.of());
+                e.printStackTrace();
                 return Boolean.FALSE;
             }
         });
@@ -251,6 +259,7 @@ public class CicdService implements ControlServer.Delegate {
                 return Boolean.TRUE;
             } catch (final Exception e) {
                 plugin.messages().send(sender, "resolve-failed-" + mode, Map.of("error", safeMessage(e)));
+                e.printStackTrace();
                 return Boolean.FALSE;
             }
         });
