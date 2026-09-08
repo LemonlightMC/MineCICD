@@ -145,4 +145,104 @@ class SecretManagerFilterConfigTest {
         String once = SecretManager.stripStaleSections("[core]\n\ta = b\n# MineCICD FILTERS BEGIN\n[filter \"minecicd-1\"]\n# MineCICD FILTERS END\n");
         assertEquals(once, SecretManager.stripStaleSections(once));
     }
+
+    @Test
+    void stripRemovesLoneEndMarkerOutsideBlock() {
+        String config = String.join("\n",
+                "# MineCICD FILTERS END",
+                "[core]",
+                "\ta = b",
+                "");
+        assertEquals("[core]" + LINE_SEP + "\ta = b" + LINE_SEP,
+                SecretManager.stripStaleSections(config));
+    }
+
+    @Test
+    void stripNormalizesCrlfWithoutDoublingCarriageReturns() {
+        String config = "[core]\r\n\ta = b\r\n";
+        String stripped = SecretManager.stripStaleSections(config);
+        assertFalse(stripped.contains("\r\r\n"), "CR must not be doubled");
+        assertEquals("[core]" + LINE_SEP + "\ta = b" + LINE_SEP, stripped);
+    }
+
+    @Test
+    void attributesStripRemovesManagedBlockAndKeepsOtherRules() {
+        String content = String.join("\n",
+                "*.jar binary",
+                "# MineCICD FILTERS BEGIN",
+                "plugins/example/config.yml filter=minecicd-abcd1234ef567890",
+                "# MineCICD FILTERS END",
+                "*.log text eol=lf",
+                "");
+        String stripped = SecretManager.stripStaleAttributesBlock(content);
+        assertTrue(stripped.contains("*.jar binary"));
+        assertTrue(stripped.contains("*.log text eol=lf"));
+        assertFalse(stripped.contains("MineCICD FILTERS"));
+        assertFalse(stripped.contains("minecicd-"));
+    }
+
+    @Test
+    void attributesStripCleansStrayMarkersAndDuplicateBlocks() {
+        String content = String.join("\n",
+                "*.jar binary",
+                "# MineCICD FILTERS END",
+                "# MineCICD FILTERS BEGIN",
+                "a filter=minecicd-1",
+                "# MineCICD FILTERS END",
+                "# MineCICD FILTERS BEGIN",
+                "a filter=minecicd-1",
+                "# MineCICD FILTERS END",
+                "");
+        assertEquals("*.jar binary" + LINE_SEP,
+                SecretManager.stripStaleAttributesBlock(content));
+    }
+
+    @Test
+    void attributesStripExportsOnlyLineSeparatorNormalizedContent() {
+        String content = "*.jar binary\r\n# MineCICD FILTERS BEGIN\r\na filter=minecicd-1\r\n# MineCICD FILTERS END\r\n";
+        assertEquals("*.jar binary" + LINE_SEP,
+                SecretManager.stripStaleAttributesBlock(content));
+    }
+
+    @Test
+    void repeatedReloadsNeverDuplicateManagedAttributes() {
+        SecretFileEntry entry = entryFor(FILE);
+        String content = "*.jar binary\n";
+        for (int i = 0; i < 10; i++) {
+            StringBuilder out = new StringBuilder(SecretManager.stripStaleAttributesBlock(content));
+            if (out.length() > LINE_SEP.length() && out.lastIndexOf(LINE_SEP) < out.length() - LINE_SEP.length()) {
+                out.append(LINE_SEP);
+            }
+            content = out.append(SecretManager.buildAttributesBlock(new StringBuilder(), List.of(entry))).toString();
+        }
+        assertEquals(1, occurrences(content, "# MineCICD FILTERS BEGIN"));
+        assertEquals(1, occurrences(content, "# MineCICD FILTERS END"));
+        assertEquals(1, occurrences(content, FILE + " filter=" + entry.driverName()));
+        assertTrue(content.startsWith("*.jar binary" + LINE_SEP));
+    }
+
+    @Test
+    void repeatedReloadsNeverDuplicateManagedConfigSections() {
+        SecretFileEntry entry = entryFor(FILE);
+        String content = "[core]\n\trepositoryformatversion = 0\n";
+        for (int i = 0; i < 10; i++) {
+            StringBuilder out = new StringBuilder(SecretManager.stripStaleSections(content));
+            if (out.length() > LINE_SEP.length() && out.lastIndexOf(LINE_SEP) < out.length() - LINE_SEP.length()) {
+                out.append(LINE_SEP);
+            }
+            content = out.append(SecretManager.buildFilterConfigBlock(new StringBuilder(), List.of(entry))).toString();
+        }
+        assertEquals(1, occurrences(content, "# MineCICD FILTERS BEGIN"));
+        assertEquals(1, occurrences(content, "# MineCICD FILTERS END"));
+        assertEquals(1, occurrences(content, "[filter \"" + entry.driverName() + "\"]"));
+        assertTrue(content.startsWith("[core]" + LINE_SEP + "\trepositoryformatversion = 0" + LINE_SEP));
+    }
+
+    private static int occurrences(final String haystack, final String needle) {
+        int count = 0;
+        for (int i = 0; (i = haystack.indexOf(needle, i)) != -1; i += needle.length()) {
+            count++;
+        }
+        return count;
+    }
 }

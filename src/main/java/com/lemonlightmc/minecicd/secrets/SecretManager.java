@@ -141,17 +141,11 @@ public class SecretManager {
         final Path attributes = plugin.serverRoot().resolve(ATTR_FILE);
         try {
             final StringBuilder out = new StringBuilder();
-            // append existing file
+            // Remove any MineCICD block already written (and any lone marker
+            // lines an interrupted legacy write left behind) so the block is
+            // replaced rather than duplicated on every reload.
             if (Files.exists(attributes)) {
-                final String existing = Files.readString(attributes, StandardCharsets.UTF_8);
-                final int begin = existing.indexOf(FILTERS_BEGIN);
-                final int end = existing.indexOf(FILTERS_END);
-                if (begin >= 0 && end > begin) {
-                    out.append(existing, 0, begin);
-                    out.append(existing.substring(end));
-                } else {
-                    out.append(existing);
-                }
+                out.append(stripStaleAttributesBlock(Files.readString(attributes, StandardCharsets.UTF_8)));
             }
             // Check Line Seperator
             if (out.length() > LINE_SEP.length() && out.lastIndexOf(LINE_SEP) < out.length() - LINE_SEP.length()) {
@@ -183,6 +177,43 @@ public class SecretManager {
         }
         builder.append(FILTERS_END).append(LINE_SEP);
         return builder.toString();
+    }
+
+    /**
+     * Removes every MineCICD-managed region from .gitattributes: each
+     * {@code # MineCICD FILTERS BEGIN/END} block as well as any lone marker
+     * line left behind by an interrupted legacy write. Other attribute rules
+     * are kept line-by-line (trailing {@code \r} dropped, then re-appended
+     * with {@code LINE_SEP}), so the managed block can never accumulate.
+     */
+    static String stripStaleAttributesBlock(final String content) {
+        final String[] lines = content.split("\\r?\\n", -1);
+        // split(..., -1) yields one trailing empty element for a final newline;
+        // that element must not become an extra (growing) empty line on each pass.
+        int last = lines.length;
+        if (last > 0 && lines[last - 1].isEmpty()) {
+            last--;
+        }
+        final StringBuilder out = new StringBuilder();
+        boolean inBlock = false;
+        for (int i = 0; i < last; i++) {
+            final String line = lines[i];
+            final String trimmed = line.trim();
+            if (inBlock) {
+                if (trimmed.equals(FILTERS_END)) {
+                    inBlock = false;
+                }
+                continue;
+            }
+            if (trimmed.equals(FILTERS_BEGIN) || trimmed.equals(FILTERS_END)) {
+                if (trimmed.equals(FILTERS_BEGIN)) {
+                    inBlock = true;
+                }
+                continue;
+            }
+            out.append(stripTrailingCr(line)).append(LINE_SEP);
+        }
+        return out.toString();
     }
 
     private void writeGitConfig() {
@@ -252,41 +283,55 @@ public class SecretManager {
         if (last > 0 && lines[last - 1].isEmpty()) {
             last--;
         }
-        final StringBuilder out = new StringBuilder();
-        boolean skipToEndMarker = false;
-        boolean skipToNextSection = false;
-        for (int i = 0; i < last; i++) {
-            final String line = lines[i];
-            final String trimmed = line.trim();
-            if (skipToEndMarker) {
-                if (trimmed.equals(FILTERS_END)) {
-                    skipToEndMarker = false;
-                }
-                continue;
-            }
-            if (skipToNextSection) {
-                if (trimmed.startsWith("[")) {
-                    skipToNextSection = false;
-                } else {
+final StringBuilder out = new StringBuilder();
+            boolean skipToEndMarker = false;
+            boolean skipToNextSection = false;
+            for (int i = 0; i < last; i++) {
+                final String line = lines[i];
+                final String trimmed = line.trim();
+                if (skipToEndMarker) {
+                    if (trimmed.equals(FILTERS_END)) {
+                        skipToEndMarker = false;
+                    }
                     continue;
                 }
+                if (skipToNextSection) {
+                    if (trimmed.startsWith("[")) {
+                        skipToNextSection = false;
+                    } else {
+                        continue;
+                    }
+                }
+                // Drop stray marker lines outside a marker block (leftovers of an
+                // interrupted legacy write) so they cannot confuse later stripping.
+                if (trimmed.equals(FILTERS_BEGIN)) {
+                    skipToEndMarker = true;
+                    continue;
+                }
+                if (trimmed.equals(FILTERS_END)) {
+                    continue;
+                }
+                if (isMineCicdSectionHeader(trimmed)) {
+                    skipToNextSection = true;
+                    continue;
+                }
+                out.append(stripTrailingCr(line)).append(LINE_SEP);
             }
-            if (trimmed.equals(FILTERS_BEGIN)) {
-                skipToEndMarker = true;
-                continue;
-            }
-            if (isMineCicdSectionHeader(trimmed)) {
-                skipToNextSection = true;
-                continue;
-            }
-            out.append(line).append(LINE_SEP);
+            return out.toString();
         }
-        return out.toString();
-    }
 
     private static boolean isMineCicdSectionHeader(final String trimmed) {
         return trimmed.startsWith("[filter \"" + FILTER_NAME + "\"]")
                 || trimmed.startsWith("[filter \"" + FILTER_NAME + "-");
+    }
+
+    /**
+     * Drops a single trailing {@code \r} from a line read out of a CRLF file,
+     * so re-appending {@code LINE_SEP} never produces doubled {@code \r\r\n}.
+     * LF-only files are untouched.
+     */
+    private static String stripTrailingCr(final String line) {
+        return line.endsWith("\r") ? line.substring(0, line.length() - 1) : line;
     }
 
     /**
