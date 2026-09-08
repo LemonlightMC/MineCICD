@@ -345,7 +345,7 @@ public class GitService {
                 // Server root is a subdirectory but no .git found anywhere above —
                 // cannot auto-initialise in a monorepo context.
                 if (!plugin.serverRoot().equals(
-                        plugin.getDataFolder().getParentFile().getParentFile().toPath())) {
+                        plugin.getDataFolder().toPath().getParent().getParent())) {
                     throw new GitException(
                             "No Git repository found. When using git.server-root, "
                                     + "initialise the repository at the repo root first, then set server-root "
