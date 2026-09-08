@@ -82,6 +82,7 @@ jobs:
           name: MineCICD
           path: build/libs/MineCICD-*.jar
           if-no-files-found: error
+          archive: false
           retention-days: 7
 
   release:
