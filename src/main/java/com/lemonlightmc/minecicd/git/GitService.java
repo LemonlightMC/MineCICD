@@ -251,9 +251,9 @@ public class GitService {
     public synchronized int addToTracking(final String pathSpec) {
         final String entry = normalizeTrackingEntry(pathSpec);
         final GitIgnoreEditor editor = new GitIgnoreEditor(plugin.serverRoot());
-        final boolean changed = editor.remove(entry);
+        final boolean changed = editor.track(entry);
         if (changed) {
-            commitIgnoreChange("Added " + entry + " to Git tracking");
+            commitIgnoreChange("Added " + display(entry) + " to Git tracking");
         }
         return changed ? 1 : 0;
     }
@@ -261,9 +261,9 @@ public class GitService {
     public synchronized int removeFromTracking(final String pathSpec) {
         final String entry = normalizeTrackingEntry(pathSpec);
         final GitIgnoreEditor editor = new GitIgnoreEditor(plugin.serverRoot());
-        final boolean changed = editor.add(entry);
+        final boolean changed = editor.untrack(entry);
         if (changed) {
-            commitIgnoreChange("Removed " + entry + " from Git tracking");
+            commitIgnoreChange("Removed " + display(entry) + " from Git tracking");
         }
         return changed ? 1 : 0;
     }
@@ -877,30 +877,41 @@ public class GitService {
         return oldPath;
     }
 
-    private String normalizeTrackingEntry(final String pathSpec) {
-        String p = pathSpec == null ? "" : pathSpec.trim().replace('\\', '/');
-        if (p.isEmpty()) {
+    private String normalizeTrackingEntry(String path) {
+        if (path == null || path.isBlank()) {
             throw new GitException("Empty path");
         }
-        while (p.startsWith("./")) {
-            p = p.substring(2);
+        path = path.trim().replace('\\', '/');
+        if (path.equals(".") || path.equals("./") || path.equals("/")) {
+            // Server root: "add ." / "add ./" means track all files.
+            return "";
         }
-        while (p.startsWith("/")) {
-            p = p.substring(1);
+        while (path.startsWith("./")) {
+            path = path.substring(2);
         }
-        for (final String segment : p.split("/")) {
+        while (path.startsWith("/")) {
+            path = path.substring(1);
+        }
+        if (path.isEmpty() || path.equals(".")) {
+            return "";
+        }
+        for (final String segment : path.split("/")) {
             if (segment.isEmpty() || ".".equals(segment) || "..".equals(segment)) {
-                throw new GitException("Invalid path: " + pathSpec);
+                throw new GitException("Invalid path: " + path);
             }
         }
-        // M-05: rely solely on syntactic trailing '/' (TOCTOU-safe); callers must
+        // rely solely on syntactic trailing '/' (TOCTOU-safe); callers must
         // include '/' for directories
-        final Path resolved = plugin.serverRoot().resolve(p).normalize().toAbsolutePath();
+        final Path resolved = plugin.serverRoot().resolve(path).normalize().toAbsolutePath();
         final Path base = plugin.serverRoot().normalize().toAbsolutePath();
         if (!resolved.startsWith(base)) {
-            throw new GitException("Path escapes server root: " + pathSpec);
+            throw new GitException("Path escapes server root: " + path);
         }
-        return p;
+        return path;
+    }
+
+    private static String display(final String entry) {
+        return entry == null || entry.isEmpty() ? "all files" : entry;
     }
 
     private String rootMessage(final Throwable t) {
