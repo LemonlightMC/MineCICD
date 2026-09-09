@@ -85,21 +85,24 @@ public class GitService {
      *                      remote URL is invalid
      */
     public synchronized boolean init() {
-        if (isInitialized()) {
-            return false;
+        try {
+            if (isInitialized()) {
+                return true;
+            }
+            git = Git.init().setDirectory(plugin.serverRoot().toFile())
+                    .setInitialBranch(plugin.config().git().branch())
+                    .call();
+            repo = git.getRepository();
+            final String url = plugin.config().git().repo();
+            if (url != null && !url.isBlank()) {
+                ensureRemote();
+            }
+            return true;
+        } catch (final GitException e) {
+            throw e;
+        } catch (final Exception e) {
+            throw new GitException("Unable to initialize repository: " + rootMessage(e), e);
         }
-        if (!plugin.remoteRoot().isEmpty()) {
-            throw new GitException(
-                    "No Git repository found. When using git.remote-server-root, "
-                            + "the server root on the host must sit at that path inside an existing "
-                            + "repository checkout; initialise the parent repository instead.");
-        }
-        openOrInit();
-        final String url = plugin.config().git().repo();
-        if (url != null && !url.isBlank()) {
-            ensureRemote();
-        }
-        return true;
     }
 
     public synchronized PullResult pull(final boolean force) {
@@ -409,13 +412,6 @@ public class GitService {
         try {
             if (isInitialized()) {
                 open();
-            } else if (!plugin.remoteRoot().isEmpty()) {
-                // A remote root path means the server folder is part of an existing
-                // repository checkout — never auto-initialise in that context.
-                throw new GitException(
-                        "No Git repository found. When using git.remote-server-root, "
-                                + "the server root on the host must sit at that path inside an existing "
-                                + "repository checkout; initialise the repository first.");
             } else {
                 git = Git.init().setDirectory(plugin.serverRoot().toFile())
                         .setInitialBranch(plugin.config().git().branch())
