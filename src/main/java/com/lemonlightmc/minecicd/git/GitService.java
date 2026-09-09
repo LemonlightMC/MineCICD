@@ -49,6 +49,80 @@ public class GitService {
     private static final int PAGE_SIZE = 5;
     private static final Pattern COMMIT_FROM_URL = Pattern.compile("[0-9a-fA-F]{40}");
 
+    private static final String GITIGNORE_TEMPLATE = """
+            # The .gitignore file for MineCICD.
+            # By default, ALL files and directories are ignored!
+            # This serves as a store for what files are added / ignored and may be edited manually or via the plugin.
+            *
+            !*/
+
+            # Inclusions / Exclusions done manually in this file or through plugin commands
+            # MineCICD GITIGNORE PART BEGIN MARKER
+            # MineCICD GITIGNORE PART END MARKER
+
+            # MineCICD is priority EXCLUDED. It is not recommended to track it, as this could lead to security risks or other issues
+            /plugins/MineCICD/**
+
+            # The secrets.yml file in the server root should also be excluded, as it contains sensitive information
+            /secrets.ym**
+
+            # The .gitignore is INCLUDED at all times
+            !/.gitignore
+
+            # The MineCICD-(version) jarfile should also be excluded, since tracking it will break the plugin operation
+            /plugins/MineCICD-*.jar
+
+            # PlugManX is also excluded, as it is not recommended to track it
+            /plugins/PlugManX/**
+            /plugins/PlugManX-*.jar
+            /plugins/PlugMan/**
+            /plugins/PlugMan-*.jar
+
+            # For IDEs, the following files are excluded, as they are not recommended to be tracked
+            /.idea/**
+            /.vscode/**
+            /.project
+            /.classpath
+            /.settings/**
+            /.iml
+
+            # Any manual exclusions / inclusions shall be done below this line
+            *.png
+            *.dat
+            *.log
+            *.db
+            *.sql
+            *.sqlite
+            *.zip
+            *.tar
+            *.gz
+            *.bz2
+            *.7z
+            *.rar
+            *.old
+            *.bak
+
+            # JAR files are currently only experimentally supported
+            # See the config option "experimental-jar-loading" and README for more information
+            *.jar
+
+            # The following files and directories are also priority excluded, as they are not recommended to be tracked
+            /cache/**
+            /libraries/**
+            /logs/**
+            /plugins/.paper-remapped/**
+            /versions/**
+            /world/**
+            /world_nether/**
+            /world_the_end/**
+            /banned-ips.json
+            /banned-players.json
+            /ops.json
+            /permissions.yml
+            /usercache.json
+            /whitelist.json
+            """;
+
     private final MineCICD plugin;
     private Git git;
     private Repository repo;
@@ -409,19 +483,33 @@ public class GitService {
     }
 
     private void openOrInit() {
+        final boolean wasInitialized = isInitialized();
         try {
-            if (isInitialized()) {
+            if (wasInitialized) {
                 open();
             } else {
                 git = Git.init().setDirectory(plugin.serverRoot().toFile())
                         .setInitialBranch(plugin.config().git().branch())
                         .call();
                 repo = git.getRepository();
+                deployGitignoreTemplate();
             }
         } catch (final GitException e) {
             throw e;
         } catch (final Exception e) {
             throw new GitException("Unable to open/initialize repository: " + rootMessage(e), e);
+        }
+    }
+
+    private void deployGitignoreTemplate() {
+        final Path target = plugin.serverRoot().resolve(".gitignore");
+        if (Files.exists(target)) {
+            return;
+        }
+        try {
+            Files.writeString(target, GITIGNORE_TEMPLATE);
+        } catch (final IOException e) {
+            throw new GitException("Unable to deploy .gitignore template: " + e.getMessage(), e);
         }
     }
 
