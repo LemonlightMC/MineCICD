@@ -158,7 +158,6 @@ public class GitService {
         openOrInit();
         ensureRemote();
         final String branch = plugin.config().git().branch();
-        ensureLocalBranch(branch);
         Status status;
         try {
             git.add().addFilepattern(".").call();
@@ -170,6 +169,7 @@ public class GitService {
             return new PushResult(0, false);
         }
         commitWithIdentity(message);
+        ensureLocalBranch(branch);
         pushToRemote(branch);
         return new PushResult(1, true);
     }
