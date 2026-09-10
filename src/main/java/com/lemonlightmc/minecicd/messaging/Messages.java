@@ -27,6 +27,15 @@ public class Messages {
         load();
     }
 
+    public static String rootMessage(final Throwable t) {
+        Throwable current = t;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        final String message = current.getMessage();
+        return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
+    }
+
     public void load() {
         final File file = new File(plugin.getDataFolder(), "messages.yml");
         boolean changed = false;

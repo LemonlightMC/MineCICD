@@ -101,7 +101,6 @@ public final class MineCICD extends JavaPlugin {
     @Override
     public void onDisable() {
         if (healthCheck != null) {
-            healthCheck.shutdown();
             healthCheck = null;
         }
         if (secretManager != null) {

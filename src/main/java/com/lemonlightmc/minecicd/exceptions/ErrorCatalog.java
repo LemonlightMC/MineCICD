@@ -1,5 +1,7 @@
 package com.lemonlightmc.minecicd.exceptions;
 
+import com.lemonlightmc.minecicd.messaging.Messages;
+
 /**
  * Maps common failure signatures to an actionable fix suggestion, surfaced as
  * the {@code {suggestion}} placeholder in failure messages. Pure logic,
@@ -57,15 +59,6 @@ public final class ErrorCatalog {
     }
 
     public static String suggest(final Throwable t) {
-        return suggest(rootMessage(t));
-    }
-
-    private static String rootMessage(final Throwable t) {
-        Throwable current = t;
-        while (current.getCause() != null) {
-            current = current.getCause();
-        }
-        final String message = current.getMessage();
-        return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
+        return suggest(Messages.rootMessage(t));
     }
 }

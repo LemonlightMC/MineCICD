@@ -15,6 +15,7 @@ import org.bukkit.command.CommandSender;
 
 import com.lemonlightmc.minecicd.MineCICD;
 import com.lemonlightmc.minecicd.exceptions.ScriptException;
+import com.lemonlightmc.minecicd.messaging.Messages;
 
 public class Script {
 
@@ -112,7 +113,7 @@ public class Script {
     } catch (final ScriptException e) {
       throw e;
     } catch (final Exception e) {
-      throw new ScriptException(name + " - Command failed (line " + line + "): /" + command + " -> " + rootMessage(e));
+      throw new ScriptException(name + " - Command failed (line " + line + "): /" + command + " -> " + Messages.rootMessage(e));
     }
   }
 
@@ -165,7 +166,7 @@ public class Script {
       throw e;
     } catch (final Exception e) {
       throw new ScriptException(
-          name + " - Shell command failed (line " + line + "): " + command + " -> " + rootMessage(e));
+          name + " - Shell command failed (line " + line + "): " + command + " -> " + Messages.rootMessage(e));
     }
   }
 
@@ -174,14 +175,6 @@ public class Script {
     this.lastRunTimestamp = System.currentTimeMillis();
     this.lastRunDuration = lastRunTimestamp - start;
     this.avgDuration = (avgDuration + lastRunDuration) / 2;
-  }
-
-  private static String rootMessage(final Throwable t) {
-    Throwable current = t;
-    while (current.getCause() != null) {
-      current = current.getCause();
-    }
-    return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
   }
 
   private static Path resolvePath(final Path dir, final String name) {

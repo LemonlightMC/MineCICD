@@ -7,6 +7,8 @@ import com.lemonlightmc.minecicd.git.Results.LogPage;
 import com.lemonlightmc.minecicd.git.Results.PullResult;
 import com.lemonlightmc.minecicd.git.Results.PushResult;
 import com.lemonlightmc.minecicd.git.Results.StatusInfo;
+import com.lemonlightmc.minecicd.messaging.Messages;
+
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ResetCommand.ResetType;
 import org.eclipse.jgit.api.Status;
@@ -179,7 +181,7 @@ public class GitService {
         } catch (final GitException e) {
             throw e;
         } catch (final Exception e) {
-            throw new GitException("Unable to initialize repository: " + rootMessage(e), e);
+            throw new GitException("Unable to initialize repository: " + Messages.rootMessage(e), e);
         }
     }
 
@@ -213,7 +215,7 @@ public class GitService {
         try {
             open();
         } catch (final IOException e) {
-            throw new GitException("Unable to open repository: " + rootMessage(e), e);
+            throw new GitException("Unable to open repository: " + Messages.rootMessage(e), e);
         }
         final Path gitDir = repo.getDirectory().toPath().toAbsolutePath().normalize();
         final Path root = plugin.serverRoot().toAbsolutePath().normalize();
@@ -227,7 +229,7 @@ public class GitService {
         try {
             deleteRecursively(gitDir);
         } catch (final IOException e) {
-            throw new GitException("Unable to remove .git: " + rootMessage(e), e);
+            throw new GitException("Unable to remove .git: " + Messages.rootMessage(e), e);
         }
         return true;
     }
@@ -241,7 +243,7 @@ public class GitService {
             git.add().addFilepattern(".").call();
             status = git.status().call();
         } catch (final GitAPIException e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
         if (status.isClean()) {
             return new PushResult(0, false);
@@ -281,7 +283,7 @@ public class GitService {
         try {
             git.reset().setMode(ResetType.HARD).setRef(id.name()).call();
         } catch (final GitAPIException e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -294,7 +296,7 @@ public class GitService {
         try {
             git.revert().include(id).call();
         } catch (final Exception e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -314,7 +316,7 @@ public class GitService {
             final List<DiffEntry> entries = git.diff().setOldTree(oldTree).setNewTree(newTree).call();
             return entries.stream().map(this::formatDiffEntry).toList();
         } catch (final Exception e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -341,7 +343,7 @@ public class GitService {
             try {
                 st = git.status().call();
             } catch (final GitAPIException e) {
-                throw new GitException("Unable to check working tree: " + rootMessage(e), e);
+                throw new GitException("Unable to check working tree: " + Messages.rootMessage(e), e);
             }
             if (!st.isClean()) {
                 return false;
@@ -351,7 +353,7 @@ public class GitService {
         } catch (final GitException e) {
             throw e;
         } catch (final Exception e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -388,7 +390,7 @@ public class GitService {
         } catch (final GitException e) {
             throw e;
         } catch (final Exception e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -412,7 +414,7 @@ public class GitService {
             return new LogPage(page, maxPage,
                     new ArrayList<>(all.subList(from, Math.min(from + PAGE_SIZE, all.size()))));
         } catch (final IOException e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -426,7 +428,7 @@ public class GitService {
             final RevCommit commit = walk.parseCommit(id);
             return toEntry(commit, true);
         } catch (final Exception e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -442,7 +444,7 @@ public class GitService {
             final int remoteChanges = behindCount(plugin.config().git().branch());
             return new StatusInfo(branch, plugin.config().git().repo(), localChanges, remoteChanges);
         } catch (final Exception e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -455,7 +457,7 @@ public class GitService {
             final Status st = git.status().call();
             return new ArrayList<>(new TreeSet<>(st.getUncommittedChanges()));
         } catch (final Exception e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -476,7 +478,7 @@ public class GitService {
             final List<DiffEntry> entries = git.diff().setOldTree(oldTree).setNewTree(newTree).call();
             return entries.stream().map(this::formatDiffEntry).toList();
         } catch (final Exception e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -485,7 +487,7 @@ public class GitService {
         try {
             git.reset().setMode(ResetType.MERGE).call();
         } catch (final Exception e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -496,7 +498,7 @@ public class GitService {
         try {
             remote = repo.resolve(remoteBranchName(branch));
         } catch (final IOException e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
         if (remote == null) {
             throw new GitException("Remote branch " + branch + " not found");
@@ -504,7 +506,7 @@ public class GitService {
         try {
             git.reset().setMode(ResetType.HARD).setRef(remote.name()).call();
         } catch (final GitAPIException e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -513,7 +515,7 @@ public class GitService {
         try {
             git.reset().setMode(ResetType.HARD).setRef(Constants.HEAD).call();
         } catch (final GitAPIException e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -580,7 +582,7 @@ public class GitService {
         } catch (final GitException e) {
             throw e;
         } catch (final Exception e) {
-            throw new GitException("Unable to open/initialize repository: " + rootMessage(e), e);
+            throw new GitException("Unable to open/initialize repository: " + Messages.rootMessage(e), e);
         }
     }
 
@@ -610,7 +612,7 @@ public class GitService {
                 git.remoteAdd().setName("origin").setUri(new URIish(url)).call();
             }
         } catch (final Exception e) {
-            throw new GitException("Unable to configure remote: " + rootMessage(e), e);
+            throw new GitException("Unable to configure remote: " + Messages.rootMessage(e), e);
         }
     }
 
@@ -652,7 +654,7 @@ public class GitService {
                     .setTimeout(plugin.config().git().timeoutSeconds())
                     .call();
         } catch (final Exception e) {
-            throw new GitException("Fetch failed: " + rootMessage(e), e);
+            throw new GitException("Fetch failed: " + Messages.rootMessage(e), e);
         }
     }
 
@@ -709,7 +711,7 @@ public class GitService {
             }
             return out;
         } catch (final IOException e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -740,7 +742,7 @@ public class GitService {
         try {
             git.reset().setMode(ResetType.HARD).setRef(remoteRef.getName()).call();
         } catch (final GitAPIException e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -753,7 +755,7 @@ public class GitService {
                 checkout(branch);
             }
         } catch (final Exception e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -765,7 +767,7 @@ public class GitService {
                 git.checkout().setName(branch).setCreateBranch(true).setStartPoint(startPoint).call();
             }
         } catch (final GitAPIException e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -773,7 +775,7 @@ public class GitService {
         try {
             git.checkout().setName(branch).call();
         } catch (final GitAPIException e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
     }
 
@@ -832,7 +834,7 @@ public class GitService {
         try {
             git.commit().setMessage(message).setAuthor(identity).setCommitter(identity).call();
         } catch (final GitAPIException e) {
-            throw new GitException("Commit failed: " + rootMessage(e), e);
+            throw new GitException("Commit failed: " + Messages.rootMessage(e), e);
         }
     }
 
@@ -844,7 +846,7 @@ public class GitService {
             git.add().addFilepattern(".gitignore").call();
             commitWithIdentity(message);
         } catch (final Exception e) {
-            throw new GitException(rootMessage(e), e);
+            throw new GitException(Messages.rootMessage(e), e);
         }
         pushToRemote(plugin.config().git().branch());
     }
@@ -869,7 +871,7 @@ public class GitService {
         } catch (final GitException e) {
             throw e;
         } catch (final GitAPIException e) {
-            throw new GitException("Push failed: " + rootMessage(e), e);
+            throw new GitException("Push failed: " + Messages.rootMessage(e), e);
         }
     }
 
@@ -1000,14 +1002,6 @@ public class GitService {
         return entry == null || entry.isEmpty() ? "all files" : entry;
     }
 
-    private String rootMessage(final Throwable t) {
-        Throwable current = t;
-        while (current.getCause() != null) {
-            current = current.getCause();
-        }
-        final String message = current.getMessage();
-        return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
-    }
 
     private static void deleteRecursively(final Path dir) throws IOException {
         if (!Files.exists(dir)) {
