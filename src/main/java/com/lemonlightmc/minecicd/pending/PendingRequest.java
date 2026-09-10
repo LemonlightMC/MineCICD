@@ -24,14 +24,20 @@ public class PendingRequest {
     private Status status;
     private String error;
     private final String branch;
+    private final String source;
 
     public PendingRequest(final String requestId, final List<Action> actions, final String branch) {
-        this(requestId, actions, 0, Status.RUNNING, null, branch);
+        this(requestId, actions, 0, Status.RUNNING, null, branch, "control-api");
+    }
+
+    public PendingRequest(final String requestId, final List<Action> actions, final String branch,
+            final String source) {
+        this(requestId, actions, 0, Status.RUNNING, null, branch, source);
     }
 
     private PendingRequest(final String requestId, final List<Action> actions, final int index, final Status status,
             final String error,
-            final String branch) {
+            final String branch, final String source) {
         this.requestId = requestId;
         this.actions = new ArrayList<>(actions);
         this.total = actions.size();
@@ -39,18 +45,31 @@ public class PendingRequest {
         this.status = status;
         this.error = error;
         this.branch = branch;
+        this.source = source == null || source.isBlank() ? "control-api" : source;
     }
 
     private PendingRequest(final String requestId, final List<Action> actions, final int index, final String status,
             final String error,
-            final String branch) {
+            final String branch, final String source) {
         this.requestId = requestId;
         this.actions = new ArrayList<>(actions);
         this.total = actions.size();
         this.index = index;
-        this.status = error.isEmpty() ? Status.valueOf(status) : Status.valueOf(status);
+        this.status = parseStatus(status);
         this.error = error;
         this.branch = branch;
+        this.source = source == null || source.isBlank() ? "control-api" : source;
+    }
+
+    private static Status parseStatus(final String status) {
+        if (status == null || status.isBlank()) {
+            return Status.RUNNING;
+        }
+        try {
+            return Status.valueOf(status);
+        } catch (final IllegalArgumentException e) {
+            return Status.RUNNING;
+        }
     }
 
     public String requestId() {
@@ -79,6 +98,10 @@ public class PendingRequest {
 
     public String branch() {
         return branch;
+    }
+
+    public String source() {
+        return source;
     }
 
     public boolean hasRemaining() {
@@ -112,6 +135,7 @@ public class PendingRequest {
         final JSONObject json = new JSONObject();
         json.put("requestId", requestId);
         json.put("branch", branch == null ? "" : branch);
+        json.put("source", source == null ? "" : source);
         final JSONArray array = new JSONArray();
         for (final Action action : actions) {
             final JSONObject a = new JSONObject();
@@ -145,6 +169,7 @@ public class PendingRequest {
                 json.optInt("index", 0),
                 json.optString("status", Status.RUNNING.name()),
                 json.optString("error", ""),
-                json.optString("branch", ""));
+                json.optString("branch", ""),
+                json.optString("source", "control-api"));
     }
 }

@@ -1,12 +1,19 @@
 package com.lemonlightmc.minecicd;
 
+import com.lemonlightmc.minecicd.analytics.Analytics;
+import com.lemonlightmc.minecicd.approval.ApprovalStore;
+import com.lemonlightmc.minecicd.audit.AuditLogger;
 import com.lemonlightmc.minecicd.bossbar.BossBars;
 import com.lemonlightmc.minecicd.command.MineCICDCommand;
+import com.lemonlightmc.minecicd.events.DeploymentEvents;
 import com.lemonlightmc.minecicd.git.GitService;
+import com.lemonlightmc.minecicd.health.HealthCheck;
 import com.lemonlightmc.minecicd.http.ControlSecurity;
 import com.lemonlightmc.minecicd.http.ControlServer;
 import com.lemonlightmc.minecicd.messaging.Messages;
+import com.lemonlightmc.minecicd.notify.DiscordNotifier;
 import com.lemonlightmc.minecicd.pending.PendingStore;
+import com.lemonlightmc.minecicd.schedule.AutoPullScheduler;
 import com.lemonlightmc.minecicd.scripts.ScriptManager;
 import com.lemonlightmc.minecicd.secrets.SecretManager;
 import com.destroystokyo.paper.event.server.ServerTickStartEvent;
@@ -31,6 +38,13 @@ public final class MineCICD extends JavaPlugin {
     private CicdService cicdService;
     private ControlSecurity security;
     private ControlServer controlServer;
+    private DeploymentEvents events;
+    private AuditLogger auditLogger;
+    private Analytics analytics;
+    private ApprovalStore approvalStore;
+    private DiscordNotifier discordNotifier;
+    private HealthCheck healthCheck;
+    private AutoPullScheduler autoPullScheduler;
     private volatile boolean controlActive;
     private volatile String controlAddress = "disabled";
     private boolean resumed;
@@ -43,25 +57,13 @@ public final class MineCICD extends JavaPlugin {
             getDataFolder().mkdirs();
         }
         saveDefaultExampleScript();
-
-        this.config = new MineCICDConfig(this);
-        this.serverRoot = hostServerRoot();
-        this.remoteRoot = normalizeRemoteRoot(config.git().remoteServerRoot());
-
-        this.messages = new Messages(this);
-        this.bossBars = new BossBars(this);
-        this.gitService = new GitService(this);
-        this.scriptManager = new ScriptManager(this);
-        this.secretManager = new SecretManager(this);
-        this.pendingStore = new PendingStore(getDataFolder().toPath());
-        this.cicdService = new CicdService(this);
-
-        secretManager.load();
+        setupServices();
 
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS,
                 commands -> commands.registrar().register(new MineCICDCommand(cicdService, messages).build()));
 
         startControlServer();
+        autoPullScheduler.start();
 
         getServer().getPluginManager().registerEvents(new Listener() {
             @EventHandler
@@ -76,8 +78,40 @@ public final class MineCICD extends JavaPlugin {
         getLogger().info("MineCICD " + getPluginMeta().getVersion() + " enabled.");
     }
 
+    private void setupServices() {
+        this.config = new MineCICDConfig(this);
+        this.serverRoot = hostServerRoot();
+        this.remoteRoot = normalizeRemoteRoot(config.git().remoteServerRoot());
+
+        this.events = new DeploymentEvents();
+        this.auditLogger = new AuditLogger(this);
+        this.analytics = new Analytics(this);
+        this.approvalStore = new ApprovalStore(this);
+        this.discordNotifier = new DiscordNotifier(this);
+        this.healthCheck = new HealthCheck(this);
+        this.autoPullScheduler = new AutoPullScheduler(this);
+
+        this.messages = new Messages(this);
+        this.bossBars = new BossBars(this);
+        this.gitService = new GitService(this);
+        this.scriptManager = new ScriptManager(this);
+        this.secretManager = new SecretManager(this);
+        this.pendingStore = new PendingStore(getDataFolder().toPath());
+        this.cicdService = new CicdService(this);
+
+        secretManager.load();
+    }
+
     @Override
     public void onDisable() {
+        if (autoPullScheduler != null) {
+            autoPullScheduler.shutdown();
+            autoPullScheduler = null;
+        }
+        if (healthCheck != null) {
+            healthCheck.shutdown();
+            healthCheck = null;
+        }
         if (secretManager != null) {
             secretManager.unregisterFilters();
         }
@@ -89,22 +123,37 @@ public final class MineCICD extends JavaPlugin {
             cicdService.shutdown();
             cicdService = null;
         }
+        if (discordNotifier != null) {
+            discordNotifier.shutdown();
+            discordNotifier = null;
+        }
     }
 
     public void reloadPlugin() {
-        onDisable();
         config.load();
         this.serverRoot = hostServerRoot();
         this.remoteRoot = normalizeRemoteRoot(config.git().remoteServerRoot());
         messages.load();
         bossBars.reload();
         secretManager.load();
+        auditLogger.refresh();
+        discordNotifier.refresh();
+        if (controlServer != null) {
+            controlServer.stop();
+            controlServer = null;
+        }
         startControlServer();
+        if (autoPullScheduler != null) {
+            autoPullScheduler.start();
+        }
         getLogger().info("MineCICD reloaded.");
     }
 
     private void startControlServer() {
         final var control = config.control();
+        security = new ControlSecurity(
+                control.replayWindowSeconds(),
+                control.actions());
         if (control.port() <= 0) {
             controlActive = false;
             controlAddress = "disabled";
@@ -120,9 +169,6 @@ public final class MineCICD extends JavaPlugin {
         if (control.secret().getBytes(java.nio.charset.StandardCharsets.UTF_8).length < 32) {
             getLogger().warning("control.secret is weaker than 32 bytes; use a stronger secret.");
         }
-        security = new ControlSecurity(
-                control.replayWindowSeconds(),
-                control.actions());
         final ControlServer server = new ControlServer(this, control);
 
         if (server.start()) {
@@ -131,7 +177,7 @@ public final class MineCICD extends JavaPlugin {
                     + control.port()
                     + "/" + control.path();
         } else {
-            controlActive = true;
+            controlActive = false;
             controlAddress = "failed to start";
         }
     }
@@ -228,6 +274,34 @@ public final class MineCICD extends JavaPlugin {
 
     public CicdService cicdService() {
         return cicdService;
+    }
+
+    public DeploymentEvents events() {
+        return events;
+    }
+
+    public AuditLogger auditLogger() {
+        return auditLogger;
+    }
+
+    public Analytics analytics() {
+        return analytics;
+    }
+
+    public ApprovalStore approvalStore() {
+        return approvalStore;
+    }
+
+    public DiscordNotifier discordNotifier() {
+        return discordNotifier;
+    }
+
+    public HealthCheck healthCheck() {
+        return healthCheck;
+    }
+
+    public AutoPullScheduler autoPullScheduler() {
+        return autoPullScheduler;
     }
 
     public ControlSecurity security() {

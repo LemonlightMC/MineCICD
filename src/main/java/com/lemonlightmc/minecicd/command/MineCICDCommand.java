@@ -1,8 +1,11 @@
 package com.lemonlightmc.minecicd.command;
 
 import com.lemonlightmc.minecicd.CicdService;
+import com.lemonlightmc.minecicd.analytics.Analytics;
+import com.lemonlightmc.minecicd.audit.AuditLogger;
 import com.lemonlightmc.minecicd.git.Results;
 import com.lemonlightmc.minecicd.messaging.Messages;
+import com.lemonlightmc.minecicd.schedule.AutoPullScheduler;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -135,6 +138,58 @@ public class MineCICDCommand {
                             printStatus(sender(ctx));
                             return Command.SINGLE_SUCCESS;
                         }))
+                .then(Commands.literal("audit")
+                        .requires(req("minecicd.audit"))
+                        .then(Commands.argument("page", IntegerArgumentType.integer(1))
+                                .executes(ctx -> auditPage(sender(ctx), IntegerArgumentType.getInteger(ctx, "page"))))
+                        .executes(ctx -> auditPage(sender(ctx), 1)))
+                .then(Commands.literal("analytics")
+                        .requires(req("minecicd.analytics"))
+                        .then(Commands.literal("reset")
+                                .executes(ctx -> {
+                                    service.analyticsReset(sender(ctx));
+                                    return Command.SINGLE_SUCCESS;
+                                }))
+                        .executes(ctx -> {
+                            printAnalytics(sender(ctx));
+                            return Command.SINGLE_SUCCESS;
+                        }))
+                .then(Commands.literal("confirm")
+                        .requires(req("minecicd.confirm"))
+                        .then(Commands.argument("approvalId", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    final String id = StringArgumentType.getString(ctx, "approvalId");
+                                    service.confirm(sender(ctx), id).thenAccept(ok -> {
+                                        if (ok) {
+                                            messages.send(sender(ctx), "approval-confirm-ok", Map.of("id", id));
+                                        } else {
+                                            messages.send(sender(ctx), "approval-not-found", Map.of("id", id));
+                                        }
+                                    });
+                                    return Command.SINGLE_SUCCESS;
+                                }))
+                        .executes(ctx -> {
+                            messages.send(sender(ctx), "approval-usage", Map.of("label", "minecicd"));
+                            return Command.SINGLE_SUCCESS;
+                        }))
+                .then(Commands.literal("cancel")
+                        .requires(req("minecicd.confirm"))
+                        .then(Commands.argument("approvalId", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    final String id = StringArgumentType.getString(ctx, "approvalId");
+                                    service.cancel(sender(ctx), id).thenAccept(ok -> {
+                                        if (ok) {
+                                            messages.send(sender(ctx), "approval-cancel-ok", Map.of("id", id));
+                                        } else {
+                                            messages.send(sender(ctx), "approval-not-found", Map.of("id", id));
+                                        }
+                                    });
+                                    return Command.SINGLE_SUCCESS;
+                                }))
+                        .executes(ctx -> {
+                            messages.send(sender(ctx), "approval-usage", Map.of("label", "minecicd"));
+                            return Command.SINGLE_SUCCESS;
+                        }))
                 .then(Commands.literal("diff")
                         .requires(req("minecicd.diff"))
                         .then(Commands.literal("local")
@@ -215,12 +270,53 @@ public class MineCICDCommand {
             if (s == null) {
                 return;
             }
+            final AutoPullScheduler.State pull = service.autoPullState();
             messages.sendList(sender, "status", Map.of(
                     "branch", s.branch(), "remote", s.remote(),
                     "control-status", String.valueOf(service.controlActive()),
                     "control-address", service.controlAddress(),
                     "local-changes", String.valueOf(s.localChanges()),
-                    "remote-changes", String.valueOf(s.remoteChanges())));
+                    "remote-changes", String.valueOf(s.remoteChanges()),
+                    "auto-pull", pull.nextRunText(),
+                    "auto-pull-consecutive-failures", String.valueOf(pull.consecutiveFailures()),
+                    "approvals-pending", String.valueOf(service.pendingApprovals())));
+        });
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private int auditPage(final CommandSender sender, final int page) {
+        service.audit(sender, page).thenAccept(entries -> {
+            if (entries == null || entries.isEmpty()) {
+                messages.send(sender, "audit-empty", Map.of());
+                return;
+            }
+            for (final AuditLogger.Entry entry : entries) {
+                messages.sendRaw(sender, messages.get("audit-line", Map.of(
+                        "when", entry.iso(), "actor", Messages.escape(entry.actor()),
+                        "source", Messages.escape(entry.source()),
+                        "action", Messages.escape(entry.action()),
+                        "outcome", Messages.escape(entry.outcome()),
+                        "detail", Messages.escape(entry.message()))));
+            }
+            messages.sendRaw(sender, messages.get("audit-end", Map.of("page", String.valueOf(page))));
+        });
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private int printAnalytics(final CommandSender sender) {
+        service.analytics(sender).thenAccept(summary -> {
+            if (summary == null) {
+                messages.send(sender, "analytics-empty", Map.of());
+                return;
+            }
+            messages.sendList(sender, "analytics", Map.of(
+                    "started", String.valueOf(summary.deploys()),
+                    "completed", String.valueOf(summary.successes()),
+                    "failed", String.valueOf(summary.failures()),
+                    "rolledBack", String.valueOf(summary.rollbacks()),
+                    "deploys", String.valueOf(summary.deploys()),
+                    "successRate", String.valueOf(summary.successRatePercent()),
+                    "avgMillis", String.valueOf(summary.avgDurationMillis())));
         });
         return Command.SINGLE_SUCCESS;
     }

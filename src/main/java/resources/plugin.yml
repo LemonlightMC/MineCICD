@@ -33,3 +33,18 @@ permissions:
       minecicd.reload: true
       minecicd.help: true
       minecicd.notify: true
+      minecicd.audit: true
+      minecicd.analytics: true
+      minecicd.confirm: true
+
+  minecicd.audit:
+    description: View the audit log
+    default: op
+
+  minecicd.analytics:
+    description: View and reset deployment analytics
+    default: op
+
+  minecicd.confirm:
+    description: Confirm or cancel pending change previews
+    default: op

@@ -10,7 +10,10 @@
 A modern **Paper 1.21+** plugin that turns a Minecraft server root into a Git
 repository: server changes are pushed to a remote, and remote changes are applied
 to the server (pull + defined actions) **driven by GitHub Actions** through an
-active, HMAC-authenticated control API (no passive push webhook).
+active, HMAC-authenticated control API (with an optional passive GitHub push
+webhook) — plus in-game observability (audit log, analytics, Discord
+notifications), scheduled/approved auto-pull, post-deploy health checks with
+auto-rollback, and rich error suggestions.
 
 The previous implementation (`srcOld/`) is the **feature baseline**. It is kept
 for reference but its implementation is ignored — everything under `src/` is a
@@ -40,7 +43,13 @@ fresh, friendlier, and safer rewrite.
 - [x] `/minecicd log <page|commit>` / `status` / `diff <local|remote>`
 - [x] `/minecicd script <name>` and `/minecicd resolve <mode>`
 - [x] `/minecicd reload`
-- [x] Control API (HTTP): GH Actions job drives actions in order; **no passive push webhook**
+- [x] Control API (HTTP): GH Actions job drives actions in order
+- [x] Optional passive GitHub push webhook (`POST /<path>/webhook/github`, HMAC-verified, branch-filtered) as a second pull trigger
+- [x] Scheduled auto-pull (opt-in interval + quiet hours + failure suspension)
+- [x] In-game change preview: pending pulls gated by `/minecicd confirm|cancel`
+- [x] Audit log (JSONL), deployment analytics (per-day summaries), Discord webhook notifications
+- [x] Post-deploy health checks (script/command/required plugins) + automatic rollback
+- [x] Rich error suggestions (`{suggestion}` placeholders on common failures)
 - [x] Official reusable GitHub Action (`lemonlightmc/minecicd-deploy`, separate repo) that signs + calls the API, streams plugin messages, and **polls terminal status** past the SSE stream
 - [x] Pending-action persistence: queued actions survive a server restart and **resume after full server start**
 - [x] **Fail-stop** action sequences: the first failed action aborts the rest of the request
@@ -100,6 +109,15 @@ com.lemonlightmc.minecicd
 ├── http/ControlAuth          authenticated SSE + status GET (same HMAC)
 ├── http/ProgressStream       SSE live progress per requestId (to Actions log)
 ├── http/ControlStatus        persisted per-request terminal status (completed/failed/interrupted) for polling after SSE drop
+├── http/GitHubWebhook        X-Hub-Signature-256 verification + branch ref parsing (pure, testable)
+├── events/DeploymentEvents   deploy lifecycle event bus (DEPLOY_STARTED/COMPLETED/FAILED/ROLLBACK_EXECUTED)
+├── audit/AuditLogger         JSONL audit log (per-day files, secrets redacted, ) + page reads
+├── analytics/Analytics       per-day deploy counters (successes/failures/rollbacks/duration/sources)
+├── notify/DiscordNotifier    outbound Discord webhook sender (subscribes to the event bus)
+├── schedule/AutoPullScheduler  opt-in interval auto-pull + quiet hours + failure suspension (state persisted)
+├── approval/ApprovalStore    change-preview approvals (persisted, timeout sweep, RunFactory rebuild)
+├── health/HealthCheck        post-deploy checks (script + command + required plugins, timeout)
+├── errors/ErrorCatalog       failure-signature → {suggestion} mapping
 ├── pending/PendingStore      on-disk pending-actions store; resume scan after full server start
 ├── scripts/ScriptRunner      runs scripts (console + `! shell`)
 ├── secrets/SecretManager     secrets.yml → .gitattributes + .git/config filters
@@ -151,7 +169,8 @@ POST /<path>         # TLS (native HTTPS); body { branch?, actions: [...], reque
   |- fail-stop: first failed action aborts the rest, request -> failed
   |- persist terminal status (completed/failed/interrupted); Action polls it via authenticated GET
   |- on restart, PendingStore resumes remaining actions after the server is fully loaded
-  |- NO auto-pull at boot; the server only syncs when a control request (or /minecicd) says so
+  |- optional GitHub webhook: HMAC-verify + branch-filter, then enqueue the configured actions
+  |- optional scheduled auto-pull (no boot pull): interval + quiet hours + failure suspension re-arms via /minecicd reload
 ```
 
 The server **never accepts a `repo` from the client**: it always uses the configured `git.repo`.
@@ -216,7 +235,32 @@ control:
       allow:                      # exact script file-name allowlist
         - deploy
         - backup
-version: 30000
+  github-webhook:                 # optional passive push trigger
+    enabled: false
+    secret: ""                    # GitHub webhook "Secret"; verified via X-Hub-Signature-256
+    actions: [pull]               # actions to enqueue on a push to the configured branch
+  rate-limit: { enabled: true, failures-only: true, failure-limit: 5, max-entries: 1000, window-seconds: 15 }
+version: 30001
+audit: { enabled: true, max-age-days: 90 }                     # JSONL audit log under plugins/MineCICD/audit/
+notifications:
+  discord:
+    enabled: false
+    url: ""                        # full Discord webhook URL
+    username: "MineCICD"
+    avatar-url: ""
+    ping-role-id: ""               # role to ping on failures/rollbacks
+    events: [deploy-start, deploy-success, deploy-fail, rollback]
+auto-pull: { enabled: false, interval-minutes: 60, quiet-hours: { enabled: false, from: "03:00", to: "07:00" }, max-consecutive-failures: 5 }
+approval: { enabled: false, timeout-seconds: 120, require-on: [manual], skip-if-no-changes: true }
+health-check:
+  enabled: false
+  run-inside-actions: true
+  runs-after-restart: true
+  timeout-seconds: 60
+  command: ""
+  script: ""
+  require-plugins: []
+  auto-rollback: { enabled: true, restart-after: false }
 ```
 
 - Each action type has its own enable flag; `commands`/`scripts` are **off by default** and,
@@ -251,7 +295,7 @@ Resolved:
 - `experimental-jar-loading` defaults **false** (safe).
 - `push` accepts a message (`push:<message>`) or falls back to `control.push-message` (i.e. a default auto message).
 - Official Action lives in a **separate repo** `lemonlightmc/minecicd-deploy`, referenced as `uses: lemonlightmc/minecicd-deploy@v1`.
-- **No auto-pull at boot**; the server syncs only when a control request or `/minecicd` says so.
+- **Opt-in scheduled auto-pull** (reverses the older "no auto-pull" stance): `auto-pull.enabled`, simple interval only (min 1 min, max-1-min poll), quiet hours, and a persisted failure counter that suspends the schedule after `max-consecutive-failures` (a `/minecicd reload` re-arms). No pull ever runs at boot.
 - Deploy jobs that exceed the Actions timeout: the Action **polls terminal status** (not just the SSE stream) to still resolve the final result; the server keeps running pending work regardless.
 - `control.secret` is **loaded once at startup**; rotating it requires a restart (documented).
 

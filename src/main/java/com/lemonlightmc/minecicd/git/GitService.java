@@ -161,7 +161,7 @@ public class GitService {
     public synchronized boolean init() {
         try {
             if (isInitialized()) {
-                return true;
+                return false;
             }
             git = Git.init().setDirectory(plugin.serverRoot().toFile())
                     .setInitialBranch(plugin.config().git().branch())
@@ -289,6 +289,63 @@ public class GitService {
         }
         try {
             git.revert().include(id).call();
+        } catch (final Exception e) {
+            throw new GitException(rootMessage(e), e);
+        }
+    }
+
+    public synchronized List<String> pullPreview() {
+        openOrInit();
+        ensureRemote();
+        fetch();
+        final String branch = plugin.config().git().branch();
+        try {
+            final ObjectId head = repo.resolve(Constants.HEAD);
+            final ObjectId remote = repo.resolve(remoteBranchName(branch));
+            if (head == null || remote == null) {
+                return List.of();
+            }
+            final CanonicalTreeParser oldTree = treeParser(remote);
+            final CanonicalTreeParser newTree = treeParser(head);
+            final List<DiffEntry> entries = git.diff().setOldTree(oldTree).setNewTree(newTree).call();
+            return entries.stream().map(this::formatDiffEntry).toList();
+        } catch (final Exception e) {
+            throw new GitException(rootMessage(e), e);
+        }
+    }
+
+    /**
+     * Reverts exactly the current HEAD commit (hard reset to its parent) after
+     * a failed deploy/post-restart health check. Refuses (returns false) when
+     * there is no parent commit or when the working tree has tracked local
+     * changes that would be destroyed.
+     *
+     * @return {@code true} if the deploy commit was rolled back
+     */
+    public synchronized boolean rollbackDeploy() {
+        openOrInit();
+        try (RevWalk walk = new RevWalk(repo)) {
+            final ObjectId headId = repo.resolve(Constants.HEAD);
+            if (headId == null) {
+                return false;
+            }
+            final RevCommit head = walk.parseCommit(headId);
+            if (head.getParentCount() == 0) {
+                return false;
+            }
+            final Status st;
+            try {
+                st = git.status().call();
+            } catch (final GitAPIException e) {
+                throw new GitException("Unable to check working tree: " + rootMessage(e), e);
+            }
+            if (!st.isClean()) {
+                return false;
+            }
+            git.reset().setMode(ResetType.HARD).setRef(head.getParent(0).getId().name()).call();
+            return true;
+        } catch (final GitException e) {
+            throw e;
         } catch (final Exception e) {
             throw new GitException(rootMessage(e), e);
         }

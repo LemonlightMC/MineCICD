@@ -2,6 +2,7 @@ package com.lemonlightmc.minecicd.http;
 
 import com.lemonlightmc.minecicd.MineCICD;
 import com.lemonlightmc.minecicd.MineCICDConfig.Control;
+import com.lemonlightmc.minecicd.git.CommitActions;
 import com.lemonlightmc.minecicd.git.CommitActions.Action;
 import com.lemonlightmc.minecicd.exceptions.ParseException;
 import com.lemonlightmc.minecicd.util.Ids;
@@ -30,10 +31,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 public class ControlServer {
 
     public interface Delegate {
-        void acceptRequest(String requestId, List<Action> actions, String branch);
+        void acceptRequest(String requestId, List<Action> actions, String branch, String source);
 
         ProgressStream progressStream(String requestId);
 
@@ -54,6 +58,9 @@ public class ControlServer {
     private final SSLContext sslContext;
     private final long maxBodyBytes;
     private final RateLimiter rateLimiter;
+    private final boolean githubWebhookEnabled;
+    private final String githubWebhookSecret;
+    private final List<Action> githubWebhookActions;
     private static final int MAX_HEADER_BYTES = 4096;
     private static final int MAX_EXCHANGES_PER_REQUEST = 4;
     private static final long SSE_IDLE_TIMEOUT_MS = 60_000L;
@@ -76,6 +83,23 @@ public class ControlServer {
         }
         this.maxBodyBytes = config.maxBodyBytes();
         this.rateLimiter = new RateLimiter(config.rateLimit());
+        final var gh = config.githubWebhook();
+        this.githubWebhookEnabled = gh != null && gh.enabled();
+        this.githubWebhookSecret = gh != null ? gh.secret() : "";
+        this.githubWebhookActions = parseActions(gh != null ? gh.actions() : List.of());
+    }
+
+    private static List<Action> parseActions(final List<String> raw) {
+        final List<Action> actions = new ArrayList<>();
+        for (final String s : raw != null ? raw : List.<String>of()) {
+            try {
+                actions.add(CommitActions.parseControlItem(s));
+            } catch (final ParseException e) {
+                // invalid webhook actions are ignored at construction; the plugin
+                // logs the config warning separately.
+            }
+        }
+        return actions;
     }
 
     private static String normalizePath(String p) {
@@ -122,6 +146,15 @@ public class ControlServer {
             server.createContext("/" + path, this::handlePost);
             server.createContext("/" + path + "/stream", this::handleStream);
             server.createContext("/" + path + "/status", this::handleStatus);
+            if (githubWebhookEnabled) {
+                if (githubWebhookSecret == null || githubWebhookSecret.isEmpty()) {
+                    plugin.getLogger().severe(
+                            "control.github-webhook.enabled is true but secret is empty; webhook route NOT started.");
+                } else {
+                    server.createContext("/" + path + "/webhook/github", this::handleGithubWebhook);
+                    plugin.getLogger().info("GitHub webhook route registered at /" + path + "/webhook/github");
+                }
+            }
 
             server.start();
             plugin.getLogger().info("Control API listening on " + host + ":" + port + "/" + path
@@ -216,11 +249,11 @@ public class ControlServer {
         return body;
     }
 
-    private void postprocess(final HttpExchange exchange, final String reqeustId, final byte[] body) {
+    private boolean postprocess(final HttpExchange exchange, final String reqeustId, final byte[] body) {
         // validate request id
         if (!Ids.isValidRequestId(reqeustId)) {
             respond(exchange, 400, "{\"error\":\"Invalid requestId\"}");
-            return;
+            return false;
         }
         // authenticate
         try {
@@ -229,8 +262,9 @@ public class ControlServer {
         } catch (final ControlSecurity.RejectException e) {
             rateLimiter.recordFailure(clientIp(exchange), System.currentTimeMillis());
             respond(exchange, 401, "{\"error\":\"Unauthorized\"}");
-            return;
+            return false;
         }
+        return true;
     }
 
     private void handlePost(final HttpExchange exchange) {
@@ -249,7 +283,9 @@ public class ControlServer {
                 respond(exchange, 400, "{\"error\":\"" + jsonEscape(e.getMessage()) + "\"}");
                 return;
             }
-            postprocess(exchange, request.requestId(), body);
+            if (!postprocess(exchange, request.requestId(), body)) {
+                return;
+            }
 
             // validate actions
             try {
@@ -273,7 +309,7 @@ public class ControlServer {
                 respond(exchange, 409, "{\"error\":\"Another request is already in flight\"}");
                 return;
             }
-            plugin.cicdService().acceptRequest(request.requestId(), request.actions(), branch);
+            plugin.cicdService().acceptRequest(request.requestId(), request.actions(), branch, "control-api");
             respond(exchange, 202, "{\"accepted\":true,\"requestId\":\"" + jsonEscape(request.requestId()) + "\"}");
 
         } catch (final Exception e) {
@@ -304,13 +340,81 @@ public class ControlServer {
         return cfg.control().branches() != null && cfg.control().branches().contains(requested);
     }
 
+    private void handleGithubWebhook(final HttpExchange exchange) {
+        try {
+            final byte[] body = preprocessRequest(exchange, "POST", true);
+            if (body == null) {
+                return;
+            }
+            // verify signature first, then handle ping (ping is also signed by GitHub)
+            if (!GitHubWebhook.verifySignature(githubWebhookSecret,
+                    exchange.getRequestHeaders().getFirst("X-Hub-Signature-256"), body)) {
+                rateLimiter.recordFailure(clientIp(exchange), System.currentTimeMillis());
+                respond(exchange, 401, "{\"error\":\"Invalid signature\"}");
+                return;
+            }
+            rateLimiter.recordRequest(clientIp(exchange), System.currentTimeMillis());
+
+            final String event = exchange.getRequestHeaders().getFirst("X-GitHub-Event");
+            if ("ping".equalsIgnoreCase(event)) {
+                respond(exchange, 200, "{\"ok\":true}");
+                return;
+            }
+
+            JSONObject json;
+            try {
+                json = new JSONObject(new String(body, StandardCharsets.UTF_8));
+            } catch (final Exception e) {
+                respond(exchange, 400, "{\"error\":\"Invalid JSON body\"}");
+                return;
+            }
+            // only push events to branch refs trigger anything
+            final String ref = json.optString("ref", "");
+            final String branch = GitHubWebhook.branchForRef(ref);
+            if (branch == null) {
+                respond(exchange, 200, "{\"ok\":true,\"ignored\":\"not a branch push\"}");
+                return;
+            }
+            if (githubWebhookActions.isEmpty()) {
+                respond(exchange, 200, "{\"ok\":true,\"ignored\":\"no actions configured\"}");
+                return;
+            }
+            // branch allowlist (same rules as the control API)
+            if (!branchMatches(branch)) {
+                plugin.getLogger().info("GitHub webhook ignored push to branch " + branch + " (not allowed)");
+                respond(exchange, 200, "{\"ok\":true,\"ignored\":\"branch not allowed\"}");
+                return;
+            }
+            try {
+                plugin.security().validateActions(githubWebhookActions);
+            } catch (final ControlSecurity.RejectException e) {
+                respond(exchange, 403, "{\"error\":\"" + jsonEscape(e.getMessage()) + "\"}");
+                return;
+            }
+            final String requestId = Ids.newRequestId();
+            if (!plugin.cicdService().tryAcquireInFlight(requestId)) {
+                respond(exchange, 409, "{\"error\":\"Another request is already in flight\"}");
+                return;
+            }
+            plugin.cicdService().acceptRequest(requestId, githubWebhookActions, branch, "webhook");
+            respond(exchange, 202,
+                    "{\"accepted\":true,\"requestId\":\"" + jsonEscape(requestId) + "\",\"branch\":\""
+                            + jsonEscape(branch) + "\"}");
+        } catch (final Exception e) {
+            plugin.getLogger().warning("GitHub webhook error: " + e.getMessage());
+            respond(exchange, 500, "{\"error\":\"Internal error\"}");
+        }
+    }
+
     private void handleStream(final HttpExchange exchange) {
         final byte[] body = preprocessRequest(exchange, "POST", false);
         if (body == null) {
             return;
         }
         final String requestId = query(exchange, "requestId");
-        postprocess(exchange, requestId, body);
+        if (!postprocess(exchange, requestId, body)) {
+            return;
+        }
 
         // cap exchanges per requestId
         final ProgressStream existing = plugin.cicdService().progressStream(requestId);
@@ -376,7 +480,9 @@ public class ControlServer {
         }
 
         final String requestId = query(exchange, "requestId");
-        postprocess(exchange, requestId, body);
+        if (!postprocess(exchange, requestId, body)) {
+            return;
+        }
 
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
         final ControlStatus.Entry entry = plugin.cicdService().controlStatus().get(requestId);
@@ -431,11 +537,23 @@ public class ControlServer {
 
     private void respond(final HttpExchange exchange, final int status, final String body) {
         if (body == null || body.isEmpty()) {
-            exchange.close();
+            try {
+                exchange.sendResponseHeaders(status, -1);
+            } catch (final IOException ignored) {
+            } finally {
+                exchange.close();
+            }
+            return;
         }
         final byte[] payload = body.getBytes(StandardCharsets.UTF_8);
         if (payload.length <= 0) {
-            exchange.close();
+            try {
+                exchange.sendResponseHeaders(status, -1);
+            } catch (final IOException ignored) {
+            } finally {
+                exchange.close();
+            }
+            return;
         }
         try {
             exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");

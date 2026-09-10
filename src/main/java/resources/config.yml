@@ -59,6 +59,17 @@ control:
   max-body-bytes: 65536
   # Reject requests with a timestamp older than this many seconds
   replay-window-seconds: 300
+  # Optional passive GitHub push webhook (another pull trigger besides the
+  # job-driven Control API). Requires GitHub to reach this endpoint: keep the
+  # listener on loopback and terminate TLS at a reverse proxy. Only the
+  # configured branch triggers; verified via X-Hub-Signature-256.
+  github-webhook:
+    enabled: false
+    # Secret you configured on the GitHub webhook ("Secret" field).
+    secret: ""
+    # Actions to run on a push event to the configured branch.
+    actions:
+      - pull
   # counts requests and rejects further requests after a threshold in a time window.
   rate-limit:
     enabled: true
@@ -95,4 +106,74 @@ control:
 
 # DO NOT CHANGE THIS
 # Format: 3.x.x -> 30000
-version: 30000
+version: 30001
+
+# Audit log: append-only JSONL record of every command / deploy and its outcome.
+audit:
+  enabled: true
+  # Audit files older than this many days are trimmed on boot.
+  max-age-days: 90
+
+# Discord webhook notifications for deploy lifecycle events (outbound only).
+notifications:
+  discord:
+    enabled: false
+    # Full webhook URL (must start with https://discord.com/api/webhooks/...)
+    url: ""
+    username: "MineCICD"
+    avatar-url: ""
+    # Role to ping on failures/rollbacks, e.g. "123456789012345678". Leave empty for none.
+    ping-role-id: ""
+    # Subset of: deploy-start, deploy-success, deploy-fail, rollback
+    events:
+      - deploy-start
+      - deploy-success
+      - deploy-fail
+      - rollback
+
+# Scheduled auto-pull: deploy from the remote on a simple interval.
+auto-pull:
+  enabled: false
+  # How often to pull, in minutes. Minimum 1.
+  interval-minutes: 60
+  # Optional quiet hours during which no automatic pull runs (24h "HH:mm").
+  quiet-hours:
+    enabled: false
+    from: "03:00"
+    to: "07:00"
+  # Stop auto-pulling after this many consecutive failures (prevents a broken
+  # remote from hammering the server). A successful pull resets the counter.
+  max-consecutive-failures: 5
+
+# In-game change preview: show a diff summary and require /minecicd confirm
+# before a pull executes.
+approval:
+  enabled: false
+  # How many seconds a pending approval stays valid.
+  timeout-seconds: 120
+  # Which trigger sources require confirmation: manual, scheduled, webhook.
+  require-on:
+    - manual
+  # Skip the confirmation when there are no remote changes to pull.
+  skip-if-no-changes: true
+
+# Post-deploy health checks and automatic rollback on failure.
+health-check:
+  enabled: false
+  # Run the health check after a pull applies changes but before the next action.
+  run-inside-actions: true
+  # Re-run the health check when a pending control request resumes after a
+  # server restart (verifies the server came back healthy after a deploy).
+  runs-after-restart: true
+  # Overall health check timeout, in seconds.
+  timeout-seconds: 60
+  # Optional console command to dispatch as part of the check (non-blocking).
+  command: ""
+  # Optional script from plugins/MineCICD/scripts/: fails on nonzero exit / error.
+  script: ""
+  # Optional plugins that must be loaded after the deploy.
+  require-plugins: []
+  auto-rollback:
+    enabled: true
+    # Also restart the server after rolling back.
+    restart-after: false

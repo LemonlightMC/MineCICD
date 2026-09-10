@@ -103,6 +103,58 @@ bossbar:
   duration: 100 # Ticks to show boss bar feedback
 ```
 
+### Automatic deploys & observability
+
+```yaml
+# Passive GitHub push webhook (optional second pull trigger, alongside the job-driven API)
+control:
+  github-webhook:
+    enabled: false
+    secret: ""       # GitHub webhook "Secret"; verified via X-Hub-Signature-256
+    actions: [pull]  # actions enqueued on a push to the configured branch
+  rate-limit: { enabled: true, failures-only: true, failure-limit: 5, max-entries: 1000, window-seconds: 15 }
+
+# Scheduled auto-pull (opt-in; simple interval, quiet hours, failure suspension)
+auto-pull:
+  enabled: false
+  interval-minutes: 60
+  quiet-hours: { enabled: false, from: "03:00", to: "07:00" }
+  max-consecutive-failures: 5 # schedule suspends itself after this many failures (reload re-arms)
+
+# Approval gate: pending pulls must be confirmed in-game with /minecicd confirm
+approval:
+  enabled: false
+  timeout-seconds: 120
+  require-on: [manual]   # manual | scheduled | webhook
+  skip-if-no-changes: true
+
+# Post-deploy health checks + automatic rollback
+health-check:
+  enabled: false
+  run-inside-actions: true      # check after each pull/action sequence
+  runs-after-restart: true      # check again when a pending request resumes after restart
+  timeout-seconds: 60
+  command: ""                   # optional console command to run
+  script: ""                    # optional script name from scripts/
+  require-plugins: []           # plugin names that must be loaded after the deploy
+  auto-rollback: { enabled: true, restart-after: false }
+
+# Audit log (JSONL) and deployment analytics (per-day summaries)
+audit: { enabled: true, max-age-days: 90 }
+notifications:
+  discord:
+    enabled: false
+    url: ""                # full Discord webhook URL
+    username: "MineCICD"
+    avatar-url: ""
+    ping-role-id: ""       # role pinged on failures/rollbacks
+    events: [deploy-start, deploy-success, deploy-fail, rollback]
+```
+
+- The **GitHub webhook** route is `POST /<control.path>/webhook/github`. It is HMAC-verified with GitHub's `X-Hub-Signature-256`, ignores non-push events, and enqueues the configured actions only for pushes to the configured branch. Expose it with the **same** posture as the Control API (loopback + reverse-proxy TLS).
+- With the approval gate enabled for a source, pulls are staged as previews and only applied after an operator runs `/minecicd confirm <id>` (or expire via `cancel`/timeout).
+- A failed health check marks the deploy failed and triggers auto-rollback to the previous commit (`restart-after` optionally restarts the server again).
+
 ---
 
 ## Basic Usage
@@ -216,6 +268,10 @@ All commands are subcommands of `/minecicd` (alias: `/mcicd`).
 | `/minecicd diff <local\|remote>`           | Show uncommitted changes (local) or unpulled remote changes.              |
 | `/minecicd script <name>`                  | Run a named script.                                                       |
 | `/minecicd resolve <action>`               | Resolve conflicts: `merge-abort`, `repo-reset`, or `reset-local-changes`. |
+| `/minecicd audit [page]`                   | View the audit log (latest page first).                                  |
+| `/minecicd analytics [reset]`              | View deployment analytics summary, or reset the data.                    |
+| `/minecicd confirm <id>`                   | Approve a pending pull (change-preview gate).                            |
+| `/minecicd cancel <id>`                    | Reject a pending pull.                                                   |
 | `/minecicd reload`                         | Reload config and webhook server.                                         |
 | `/minecicd help`                           | Show help.                                                                |
 
@@ -227,6 +283,9 @@ All commands are subcommands of `/minecicd` (alias: `/mcicd`).
 | ----------------------- | --------------------------------------------------------------- |
 | `minecicd.<subcommand>` | Grants access to a specific subcommand (e.g., `minecicd.pull`). |
 | `minecicd.notify`       | Receive in-game notifications from MineCICD actions.            |
+| `minecicd.audit`        | View the audit log (`/minecicd audit`).                         |
+| `minecicd.analytics`    | View/reset analytics (`/minecicd analytics`).                   |
+| `minecicd.confirm`      | Approve/cancel pending pulls (`/minecicd confirm|cancel`).      |
 
 Use a permissions manager (LuckPerms, etc.) to assign these to groups or players.
 
@@ -253,6 +312,16 @@ MineCICD provides an official GitHub Action for automated deploys: [lemonlightmc
 ```
 
 The action signs each request with HMAC-SHA256 and drives the deploy to completion. You can poll the `/stream` (SSE) and `/status` endpoints with the same signature to follow progress.
+
+### Passive webhook alternative
+
+Instead of (or in addition to) the job-driven Action, GitHub can push to the server directly:
+
+1. Set `control.github-webhook.secret` and `enabled: true`, then `/minecicd reload`.
+2. In your GitHub repo: `Settings → Webhooks` → add the server URL `https://your-server:8080/minecicd/webhook/github`, content type `application/json`, and paste the same secret.
+3. MineCICD verifies `X-Hub-Signature-256`, filters to the configured branch, and enqueues `control.github-webhook.actions` (default `pull`).
+
+> Expose the webhook only through TLS (reverse proxy or `control.tls`); never forward the raw port.
 
 ---
 

@@ -164,7 +164,43 @@ Brigadier command tree. Registers `/minecicd` with all subcommands, per-subcomma
 
 ### CicdService
 
-Orchestrator. Receives command or control-API requests, queues them to the worker thread, coordinates `GitService` calls, `CommitActions` parsing, `ScriptRunner` execution, boss bar feedback, and notification dispatch. Ensures only one control request is in flight at a time (409 on concurrent).
+Orchestrator. Receives command or control-API requests, queues them to the worker thread, coordinates `GitService` calls, `CommitActions` parsing, `ScriptRunner` execution, boss bar feedback, and notification dispatch. Ensures only one control request is in flight at a time (409 on concurrent). Emits deploy lifecycle events, honors the approval gate, and runs post-deploy health checks with auto-rollback.
+
+### events/DeploymentEvents
+
+Small in-process event bus. Emitters publish `DEPLOY_STARTED / DEPLOY_COMPLETED / DEPLOY_FAILED / ROLLBACK_EXECUTED` events; the audit logger, analytics, and Discord notifier subscribe. Listeners run on the emitting thread and never throw.
+
+### audit/AuditLogger
+
+Append-only JSONL log under `plugins/MineCICD/audit/YYYY-MM-DD.jsonl`. One JSON object per line (actor, source, action, outcome, message, requestId, branch). Secret values (`git.pass`, webhook/control secrets) are redacted before write. Supports paged reads for `/minecicd audit` and age-based trimming.
+
+### analytics/Analytics
+
+Per-day JSON counters under `plugins/MineCICD/analytics/YYYY-MM-DD.jsonl` (deploy count, successes/failures, rollbacks, total duration, per-source breakdown). Aggregated view fed to `/minecicd analytics`; `minecicd.analytics reset` clears the data.
+
+### notify/DiscordNotifier
+
+Outbound-only Discord webhook sender. Subscribes to the event bus, builds an embed payload, and POSTs it on its own single-thread executor so the worker queue is never blocked. Only the configured subset of events is sent.
+
+### schedule/AutoPullScheduler
+
+Opt-in interval auto-pull (`auto-pull` config). Simple interval only (min 1 min), respects quiet hours, skips when a control request is in flight, and suspends itself after `max-consecutive-failures` consecutive failures. State is persisted to `auto-pull-state.json` so a restart does not silently re-arm a broken schedule; `/minecicd reload` re-arms it.
+
+### approval/ApprovalStore
+
+Change-preview gate. When the approval config is enabled for a trigger source (`manual`, `scheduled`, `webhook`), a pull first fetches + diffs (`GitService.pullPreview`) and pends as an approval instead of applying. Operators confirm/cancel with `/minecicd confirm|cancel <id>`. Approvals are persisted under `plugins/MineCICD/approvals/` and rebuilt after a restart via the registered `RunFactory`; a periodic sweep expires them after `timeout-seconds`.
+
+### health/HealthCheck
+
+Runs after a pull applies changes and again when a pending control request resumes post-restart. Checks a configured script, an optional console command, and required plugins (must be loaded/enabled). Runs on its own executor with a timeout; a failure emits `DEPLOY_FAILED` and triggers auto-rollback through `GitService.rollbackDeploy`.
+
+### http/GitHubWebhook
+
+Pure signature verification (`X-Hub-Signature-256` HMAC) and branch-ref parsing for the optional passive webhook route `POST /<path>/webhook/github`. The webhook is HMAC-verified, branch-filtered, and enqueues the configured action list through the same single-in-flight path as the job-driven API.
+
+### errors/ErrorCatalog
+
+Pure mapping from failure signature (root-cause message) to an actionable `{suggestion}`. `CicdService.fail(...)` appends the suggestion to failure messages when a known signature matches; unknown failures keep the generic error text.
 
 ---
 

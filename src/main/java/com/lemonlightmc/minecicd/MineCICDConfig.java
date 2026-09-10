@@ -71,7 +71,33 @@ public class MineCICDConfig {
 
     public record Control(String host, int port, String path, String secret, Tls tls,
             String pushMessage, List<String> branches, long maxBodyBytes,
-            long replayWindowSeconds, Actions actions, RateLimit rateLimit) {
+            long replayWindowSeconds, Actions actions, RateLimit rateLimit, GithubWebhook githubWebhook) {
+    }
+
+    public record GithubWebhook(boolean enabled, String secret, List<String> actions) {
+    }
+
+    public record Audit(boolean enabled, int maxAgeDays) {
+    }
+
+    public record Discord(boolean enabled, String url, String username, String avatarUrl, String pingRoleId,
+            List<String> events) {
+    }
+
+    public record QuietHours(boolean enabled, String from, String to) {
+    }
+
+    public record AutoPull(boolean enabled, int intervalMinutes, QuietHours quietHours, int maxConsecutiveFailures) {
+    }
+
+    public record Approval(boolean enabled, int timeoutSeconds, Set<String> requireOn, boolean skipIfNoChanges) {
+    }
+
+    public record AutoRollbackConfig(boolean enabled, boolean restartAfter) {
+    }
+
+    public record HealthCheck(boolean enabled, boolean runInsideActions, boolean runsAfterRestart, int timeoutSeconds,
+            String command, String script, List<String> requirePlugins, AutoRollbackConfig autoRollback) {
     }
 
     private final MineCICD plugin;
@@ -79,6 +105,11 @@ public class MineCICDConfig {
     private Git git;
     private BossBar bossBar;
     private Control control;
+    private Audit audit;
+    private Discord discord;
+    private AutoPull autoPull;
+    private Approval approval;
+    private HealthCheck healthCheck;
     private boolean experimentalJarLoading;
 
     public MineCICDConfig(final MineCICD plugin) {
@@ -208,6 +239,8 @@ public class MineCICDConfig {
 
         final ConfigurationSection controlSection = config.getConfigurationSection("control");
         final ConfigurationSection tls = controlSection.getConfigurationSection("tls");
+        final ConfigurationSection gh = controlSection.getConfigurationSection("github-webhook");
+        final List<String> ghActions = gh.getStringList("actions");
         this.control = new Control(
                 controlSection.getString("host", "127.0.0.1"),
                 controlSection.getInt("port", 0),
@@ -224,7 +257,55 @@ public class MineCICDConfig {
                         controlSection.getBoolean("rate-limit.failures-only", true),
                         controlSection.getInt("rate-limit.failure-limit", 5),
                         controlSection.getInt("rate-limit.max-entries", 1000),
-                        controlSection.getLong("rate-limit.window-seconds", 60000)));
+                        controlSection.getLong("rate-limit.window-seconds", 15)),
+                new GithubWebhook(
+                        gh.getBoolean("enabled", false),
+                        gh.getString("secret", ""),
+                        ghActions.isEmpty() ? List.of("pull") : List.copyOf(ghActions)));
+
+        final ConfigurationSection auditSection = config.getConfigurationSection("audit");
+        this.audit = new Audit(auditSection.getBoolean("enabled", true), auditSection.getInt("max-age-days", 90));
+
+        final ConfigurationSection discordSection = config.getConfigurationSection("notifications.discord");
+        this.discord = new Discord(
+                discordSection.getBoolean("enabled", false),
+                discordSection.getString("url", ""),
+                discordSection.getString("username", "MineCICD"),
+                discordSection.getString("avatar-url", ""),
+                discordSection.getString("ping-role-id", ""),
+                List.copyOf(discordSection.getStringList("events")));
+
+        final ConfigurationSection quietSection = config.getConfigurationSection("auto-pull.quiet-hours");
+        this.autoPull = new AutoPull(
+                config.getBoolean("auto-pull.enabled", false),
+                Math.max(1, config.getInt("auto-pull.interval-minutes", 60)),
+                new QuietHours(
+                        quietSection.getBoolean("enabled", false),
+                        quietSection.getString("from", "03:00"),
+                        quietSection.getString("to", "07:00")),
+                Math.max(1, config.getInt("auto-pull.max-consecutive-failures", 5)));
+
+        this.approval = new Approval(
+                config.getBoolean("approval.enabled", false),
+                Math.max(10, config.getInt("approval.timeout-seconds", 120)),
+                Set.copyOf(config.getStringList("approval.require-on").isEmpty()
+                        ? List.of("manual")
+                        : config.getStringList("approval.require-on")),
+                config.getBoolean("approval.skip-if-no-changes", true));
+
+        final ConfigurationSection hc = config.getConfigurationSection("health-check");
+        final ConfigurationSection autoRollback = hc.getConfigurationSection("auto-rollback");
+        this.healthCheck = new HealthCheck(
+                hc.getBoolean("enabled", false),
+                hc.getBoolean("run-inside-actions", true),
+                hc.getBoolean("runs-after-restart", true),
+                Math.max(5, hc.getInt("timeout-seconds", 60)),
+                hc.getString("command", ""),
+                hc.getString("script", ""),
+                List.copyOf(hc.getStringList("require-plugins")),
+                new AutoRollbackConfig(
+                        autoRollback.getBoolean("enabled", true),
+                        autoRollback.getBoolean("restart-after", false)));
     }
 
     public Git git() {
@@ -237,6 +318,26 @@ public class MineCICDConfig {
 
     public Control control() {
         return control;
+    }
+
+    public Audit audit() {
+        return audit;
+    }
+
+    public Discord discord() {
+        return discord;
+    }
+
+    public AutoPull autoPull() {
+        return autoPull;
+    }
+
+    public Approval approval() {
+        return approval;
+    }
+
+    public HealthCheck healthCheck() {
+        return healthCheck;
     }
 
     public boolean experimentalJarLoading() {
