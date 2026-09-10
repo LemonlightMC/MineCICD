@@ -111,7 +111,6 @@ status:
   - "<gray>Control API address: <green>{control-address}"
   - "<gray>Local changes: <green>{local-changes}"
   - "<gray>Changes on remote: <green>{remote-changes}"
-  - "<gray>Auto pull: <green>{auto-pull} <gray>(failures: {auto-pull-consecutive-failures})"
   - "<gray>Approvals pending: <green>{approvals-pending}"
   - "<gray>=========================="
 

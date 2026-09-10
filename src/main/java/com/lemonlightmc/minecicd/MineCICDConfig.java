@@ -88,8 +88,6 @@ public class MineCICDConfig {
     public record QuietHours(boolean enabled, String from, String to) {
     }
 
-    public record AutoPull(boolean enabled, int intervalMinutes, QuietHours quietHours, int maxConsecutiveFailures) {
-    }
 
     public record Approval(boolean enabled, int timeoutSeconds, Set<String> requireOn, boolean skipIfNoChanges) {
     }
@@ -108,7 +106,6 @@ public class MineCICDConfig {
     private Control control;
     private Audit audit;
     private Discord discord;
-    private AutoPull autoPull;
     private Approval approval;
     private HealthCheck healthCheck;
     private boolean experimentalJarLoading;
@@ -277,16 +274,7 @@ public class MineCICDConfig {
                 discordSection.getString("ping-role-id", ""),
                 List.copyOf(discordSection.getStringList("events")));
 
-        final ConfigurationSection quietSection = config.getConfigurationSection("auto-pull.quiet-hours");
-        this.autoPull = new AutoPull(
-                config.getBoolean("auto-pull.enabled", false),
-                Math.max(1, config.getInt("auto-pull.interval-minutes", 60)),
-                new QuietHours(
-                        quietSection.getBoolean("enabled", false),
-                        quietSection.getString("from", "03:00"),
-                        quietSection.getString("to", "07:00")),
-                Math.max(1, config.getInt("auto-pull.max-consecutive-failures", 5)));
-
+    
         this.approval = new Approval(
                 config.getBoolean("approval.enabled", false),
                 Math.max(10, config.getInt("approval.timeout-seconds", 120)),
@@ -328,10 +316,6 @@ public class MineCICDConfig {
 
     public Discord discord() {
         return discord;
-    }
-
-    public AutoPull autoPull() {
-        return autoPull;
     }
 
     public Approval approval() {

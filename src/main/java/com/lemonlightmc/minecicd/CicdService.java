@@ -1,17 +1,14 @@
 package com.lemonlightmc.minecicd;
 
-import com.lemonlightmc.minecicd.analytics.Analytics;
-import com.lemonlightmc.minecicd.audit.AuditLogger;
-import com.lemonlightmc.minecicd.errors.ErrorCatalog;
 import com.lemonlightmc.minecicd.events.DeploymentEvents;
 import com.lemonlightmc.minecicd.events.DeploymentEvents.Type;
+import com.lemonlightmc.minecicd.exceptions.ErrorCatalog;
 import com.lemonlightmc.minecicd.exceptions.GitException;
 import com.lemonlightmc.minecicd.exceptions.ScriptException;
 import com.lemonlightmc.minecicd.git.CommitActions;
 import com.lemonlightmc.minecicd.git.CommitActions.Action;
 import com.lemonlightmc.minecicd.git.CommitActions.ActionType;
 import com.lemonlightmc.minecicd.git.Results;
-import com.lemonlightmc.minecicd.health.HealthCheck;
 import com.lemonlightmc.minecicd.http.ControlServer;
 import com.lemonlightmc.minecicd.http.ControlSecurity;
 import com.lemonlightmc.minecicd.http.ControlStatus;
@@ -19,7 +16,9 @@ import com.lemonlightmc.minecicd.http.ProgressStream;
 import com.lemonlightmc.minecicd.messaging.Messages;
 import com.lemonlightmc.minecicd.pending.PendingRequest;
 import com.lemonlightmc.minecicd.pending.PendingRequest.Status;
-import com.lemonlightmc.minecicd.schedule.AutoPullScheduler;
+import com.lemonlightmc.minecicd.services.Analytics;
+import com.lemonlightmc.minecicd.services.AuditLogger;
+import com.lemonlightmc.minecicd.services.HealthCheck;
 import com.lemonlightmc.minecicd.util.Threads;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
@@ -483,10 +482,6 @@ public class CicdService implements ControlServer.Delegate {
             plugin.auditLogger().log(actorOf(sender), "manual", "approval-cancel", ok, id);
             return ok;
         });
-    }
-
-    public AutoPullScheduler.State autoPullState() {
-        return plugin.autoPullScheduler().state();
     }
 
     public int pendingApprovals() {

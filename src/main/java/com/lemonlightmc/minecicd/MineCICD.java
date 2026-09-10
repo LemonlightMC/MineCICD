@@ -1,21 +1,20 @@
 package com.lemonlightmc.minecicd;
 
-import com.lemonlightmc.minecicd.analytics.Analytics;
-import com.lemonlightmc.minecicd.approval.ApprovalStore;
-import com.lemonlightmc.minecicd.audit.AuditLogger;
 import com.lemonlightmc.minecicd.bossbar.BossBars;
 import com.lemonlightmc.minecicd.command.MineCICDCommand;
 import com.lemonlightmc.minecicd.events.DeploymentEvents;
 import com.lemonlightmc.minecicd.git.GitService;
-import com.lemonlightmc.minecicd.health.HealthCheck;
 import com.lemonlightmc.minecicd.http.ControlSecurity;
 import com.lemonlightmc.minecicd.http.ControlServer;
 import com.lemonlightmc.minecicd.messaging.Messages;
-import com.lemonlightmc.minecicd.notify.DiscordNotifier;
 import com.lemonlightmc.minecicd.pending.PendingStore;
-import com.lemonlightmc.minecicd.schedule.AutoPullScheduler;
 import com.lemonlightmc.minecicd.scripts.ScriptManager;
 import com.lemonlightmc.minecicd.secrets.SecretManager;
+import com.lemonlightmc.minecicd.services.Analytics;
+import com.lemonlightmc.minecicd.services.ApprovalStore;
+import com.lemonlightmc.minecicd.services.AuditLogger;
+import com.lemonlightmc.minecicd.services.DiscordNotifier;
+import com.lemonlightmc.minecicd.services.HealthCheck;
 import com.destroystokyo.paper.event.server.ServerTickStartEvent;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 
@@ -44,7 +43,6 @@ public final class MineCICD extends JavaPlugin {
     private ApprovalStore approvalStore;
     private DiscordNotifier discordNotifier;
     private HealthCheck healthCheck;
-    private AutoPullScheduler autoPullScheduler;
     private volatile boolean controlActive;
     private volatile String controlAddress = "disabled";
     private boolean resumed;
@@ -63,7 +61,6 @@ public final class MineCICD extends JavaPlugin {
                 commands -> commands.registrar().register(new MineCICDCommand(cicdService, messages).build()));
 
         startControlServer();
-        autoPullScheduler.start();
 
         getServer().getPluginManager().registerEvents(new Listener() {
             @EventHandler
@@ -89,7 +86,6 @@ public final class MineCICD extends JavaPlugin {
         this.approvalStore = new ApprovalStore(this);
         this.discordNotifier = new DiscordNotifier(this);
         this.healthCheck = new HealthCheck(this);
-        this.autoPullScheduler = new AutoPullScheduler(this);
 
         this.messages = new Messages(this);
         this.bossBars = new BossBars(this);
@@ -104,10 +100,6 @@ public final class MineCICD extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        if (autoPullScheduler != null) {
-            autoPullScheduler.shutdown();
-            autoPullScheduler = null;
-        }
         if (healthCheck != null) {
             healthCheck.shutdown();
             healthCheck = null;
@@ -143,9 +135,6 @@ public final class MineCICD extends JavaPlugin {
             controlServer = null;
         }
         startControlServer();
-        if (autoPullScheduler != null) {
-            autoPullScheduler.start();
-        }
         getLogger().info("MineCICD reloaded.");
     }
 
@@ -298,10 +287,6 @@ public final class MineCICD extends JavaPlugin {
 
     public HealthCheck healthCheck() {
         return healthCheck;
-    }
-
-    public AutoPullScheduler autoPullScheduler() {
-        return autoPullScheduler;
     }
 
     public ControlSecurity security() {

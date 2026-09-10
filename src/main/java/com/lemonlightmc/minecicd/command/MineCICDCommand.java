@@ -1,10 +1,9 @@
 package com.lemonlightmc.minecicd.command;
 
 import com.lemonlightmc.minecicd.CicdService;
-import com.lemonlightmc.minecicd.audit.AuditLogger;
 import com.lemonlightmc.minecicd.git.Results;
 import com.lemonlightmc.minecicd.messaging.Messages;
-import com.lemonlightmc.minecicd.schedule.AutoPullScheduler;
+import com.lemonlightmc.minecicd.services.AuditLogger;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -269,15 +268,12 @@ public class MineCICDCommand {
             if (s == null) {
                 return;
             }
-            final AutoPullScheduler.State pull = service.autoPullState();
             messages.sendList(sender, "status", Map.of(
                     "branch", s.branch(), "remote", s.remote(),
                     "control-status", String.valueOf(service.controlActive()),
                     "control-address", service.controlAddress(),
                     "local-changes", String.valueOf(s.localChanges()),
                     "remote-changes", String.valueOf(s.remoteChanges()),
-                    "auto-pull", pull.nextRunText(),
-                    "auto-pull-consecutive-failures", String.valueOf(pull.consecutiveFailures()),
                     "approvals-pending", String.valueOf(service.pendingApprovals())));
         });
         return Command.SINGLE_SUCCESS;
