@@ -1,4 +1,4 @@
-package com.lemonlightmc.minecicd.errors;
+package com.lemonlightmc.minecicd.exceptions;
 
 /**
  * Maps common failure signatures to an actionable fix suggestion, surfaced as

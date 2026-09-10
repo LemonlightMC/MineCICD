@@ -1,5 +1,6 @@
 package com.lemonlightmc.minecicd.errors;
 
+import com.lemonlightmc.minecicd.exceptions.ErrorCatalog;
 import com.lemonlightmc.minecicd.exceptions.GitException;
 import org.junit.jupiter.api.Test;
 

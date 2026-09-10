@@ -1,4 +1,4 @@
-package com.lemonlightmc.minecicd.approval;
+package com.lemonlightmc.minecicd.services;
 
 import com.lemonlightmc.minecicd.MineCICD;
 import com.lemonlightmc.minecicd.util.Threads;

@@ -2,6 +2,8 @@ package com.lemonlightmc.minecicd.notify;
 
 import com.lemonlightmc.minecicd.events.DeploymentEvents.Event;
 import com.lemonlightmc.minecicd.events.DeploymentEvents.Type;
+import com.lemonlightmc.minecicd.services.DiscordNotifier;
+
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;

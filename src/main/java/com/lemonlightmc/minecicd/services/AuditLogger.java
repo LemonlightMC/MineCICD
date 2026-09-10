@@ -1,7 +1,6 @@
-package com.lemonlightmc.minecicd.audit;
+package com.lemonlightmc.minecicd.services;
 
 import com.lemonlightmc.minecicd.MineCICD;
-import com.lemonlightmc.minecicd.events.DeploymentEvents.Event;
 import org.json.JSONObject;
 
 import java.io.IOException;
@@ -49,11 +48,11 @@ public class AuditLogger {
     public AuditLogger(final MineCICD plugin) {
         this.plugin = plugin;
         this.dir = plugin.getDataFolder().toPath().resolve("audit");
-        collectSecrets();
-        plugin.events().subscribe(this::onEvent);
+        refresh();
     }
 
-    private void collectSecrets() {
+    public void refresh() {
+        secrets.clear();
         try {
             final var cfg = plugin.config();
             addSecret(cfg.git().pass());
@@ -64,26 +63,24 @@ public class AuditLogger {
         }
     }
 
-    private void addSecret(final String value) {
-        if (value != null && value.length() >= 4) {
-            secrets.add(value);
-        }
+    public void logStartet(final String actor, final String source, final String action, final String outcome,
+            final String message, final String requestId, final String branch) {
+        log(actor, source, action, "start", message, null, null);
     }
 
-    public void refresh() {
-        secrets.clear();
-        collectSecrets();
+    public void logSuccess(final String actor, final String source, final String action, final String outcome,
+            final String message, final String requestId, final String branch) {
+        log(actor, source, action, "success", message, null, null);
     }
 
-    public String redact(final String message) {
-        if (message == null) {
-            return "";
-        }
-        String out = message;
-        for (final String s : secrets) {
-            out = out.replace(s, "***");
-        }
-        return out;
+    public void logFailure(final String actor, final String source, final String action, final String outcome,
+            final String message, final String requestId, final String branch) {
+        log(actor, source, action, "failure", message, null, null);
+    }
+
+    public void logRollback(final String actor, final String source, final String action, final String outcome,
+            final String message, final String requestId, final String branch) {
+        log(actor, source, action, "rollback", message, null, null);
     }
 
     public void log(final String actor, final String source, final String action, final boolean ok,
@@ -92,28 +89,21 @@ public class AuditLogger {
     }
 
     public void log(final String actor, final String source, final String action, final String outcome,
-            final String message, final String requestId, final String branch) {
+            String message, final String requestId, final String branch) {
         if (!plugin.config().audit().enabled()) {
             return;
+        }
+        if (message == null) {
+            message = "";
+        } else if (!message.isEmpty()) {
+            for (final String s : secrets) {
+                message = message.replace(s, "***");
+            }
         }
         final long ts = System.currentTimeMillis();
-        final Entry entry = new Entry(ts, ISO.format(Instant.ofEpochMilli(ts)), actor, source, action, outcome,
-                redact(message), requestId, branch);
+        final Entry entry = new Entry(ts, ISO.format(Instant.ofEpochMilli(ts)), actor, source, action, outcome, message,
+                requestId, branch);
         append(entry);
-    }
-
-    public void onEvent(final Event event) {
-        if (!plugin.config().audit().enabled()) {
-            return;
-        }
-        final String outcome = switch (event.type()) {
-            case DEPLOY_STARTED -> "start";
-            case DEPLOY_COMPLETED -> "success";
-            case ROLLBACK_EXECUTED -> "rollback";
-            default -> "failure";
-        };
-        log(event.actor(), event.source(), event.type().name(), outcome, event.message(), event.requestId(),
-                event.branch());
     }
 
     /** Returns entries newest-first for the given page. */
@@ -189,6 +179,12 @@ public class AuditLogger {
                     java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
         } catch (final IOException e) {
             plugin.getLogger().warning("Unable to write audit log: " + e.getMessage());
+        }
+    }
+
+    private void addSecret(final String value) {
+        if (value != null && value.length() >= 4) {
+            secrets.add(value);
         }
     }
 
