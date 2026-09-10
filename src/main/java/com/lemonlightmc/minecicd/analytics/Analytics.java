@@ -2,7 +2,6 @@ package com.lemonlightmc.minecicd.analytics;
 
 import com.lemonlightmc.minecicd.MineCICD;
 import com.lemonlightmc.minecicd.events.DeploymentEvents.Event;
-import com.lemonlightmc.minecicd.events.DeploymentEvents.Type;
 import org.json.JSONObject;
 
 import java.io.IOException;

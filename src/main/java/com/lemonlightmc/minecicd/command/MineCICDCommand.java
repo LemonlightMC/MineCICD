@@ -1,7 +1,6 @@
 package com.lemonlightmc.minecicd.command;
 
 import com.lemonlightmc.minecicd.CicdService;
-import com.lemonlightmc.minecicd.analytics.Analytics;
 import com.lemonlightmc.minecicd.audit.AuditLogger;
 import com.lemonlightmc.minecicd.git.Results;
 import com.lemonlightmc.minecicd.messaging.Messages;

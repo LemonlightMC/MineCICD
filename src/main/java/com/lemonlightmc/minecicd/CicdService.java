@@ -1,7 +1,6 @@
 package com.lemonlightmc.minecicd;
 
 import com.lemonlightmc.minecicd.analytics.Analytics;
-import com.lemonlightmc.minecicd.approval.ApprovalStore;
 import com.lemonlightmc.minecicd.audit.AuditLogger;
 import com.lemonlightmc.minecicd.errors.ErrorCatalog;
 import com.lemonlightmc.minecicd.events.DeploymentEvents;

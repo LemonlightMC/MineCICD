@@ -153,7 +153,7 @@ public class SecretManager {
             }
 
             // append filters
-            out.append(buildAttributesBlock(out, files));
+            out.append(buildAttributesBlock(new StringBuilder(), files));
             Files.write(attributes, out.toString().getBytes(StandardCharsets.UTF_8));
         } catch (final IOException e) {
             plugin.getLogger().warning("Unable to write .gitattributes: " + e.getMessage());
@@ -238,7 +238,7 @@ public class SecretManager {
             // git CLI (on other machines) treats these names as commands that do
             // not exist, and because required=false it skips the transformation
             // with a warning instead of aborting.
-            out.append(buildFilterConfigBlock(out, files));
+            out.append(buildFilterConfigBlock(new StringBuilder(), files));
             Files.write(config, out.toString().getBytes(StandardCharsets.UTF_8));
         } catch (final IOException e) {
             plugin.getLogger().warning("Unable to write .git/config filters: " + e.getMessage());

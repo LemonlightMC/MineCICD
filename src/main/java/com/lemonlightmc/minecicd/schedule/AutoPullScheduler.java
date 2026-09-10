@@ -1,7 +1,6 @@
 package com.lemonlightmc.minecicd.schedule;
 
 import com.lemonlightmc.minecicd.MineCICD;
-import com.lemonlightmc.minecicd.events.DeploymentEvents;
 import com.lemonlightmc.minecicd.events.DeploymentEvents.Type;
 import com.lemonlightmc.minecicd.util.Threads;
 import org.json.JSONObject;
@@ -13,8 +12,6 @@ import java.nio.file.Path;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
