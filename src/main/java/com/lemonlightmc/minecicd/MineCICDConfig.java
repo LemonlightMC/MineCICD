@@ -88,7 +88,6 @@ public class MineCICDConfig {
     public record QuietHours(boolean enabled, String from, String to) {
     }
 
-
     public record Approval(boolean enabled, int timeoutSeconds, Set<String> requireOn, boolean skipIfNoChanges) {
     }
 
@@ -97,6 +96,33 @@ public class MineCICDConfig {
 
     public record HealthCheck(boolean enabled, boolean runInsideActions, boolean runsAfterRestart, int timeoutSeconds,
             String command, String script, List<String> requirePlugins, AutoRollbackConfig autoRollback) {
+
+        public static HealthCheck from(ConfigurationSection section) {
+            final ConfigurationSection autoRollback = section.getConfigurationSection("auto-rollback");
+            String command = section.getString("command", "");
+            if (command != null) {
+                if (command.isBlank()) {
+                    command = null;
+                } else if (command.startsWith("/")) {
+                    command = command.substring(1);
+                }
+            }
+            String script = section.getString("script", "");
+            if (script != null && script.isBlank()) {
+                script = null;
+            }
+            return new HealthCheck(
+                    section.getBoolean("enabled", false),
+                    section.getBoolean("run-inside-actions", true),
+                    section.getBoolean("runs-after-restart", true),
+                    Math.max(5, section.getInt("timeout-seconds", 60)),
+                    command,
+                    script,
+                    section.getStringList("require-plugins"),
+                    new AutoRollbackConfig(
+                            autoRollback.getBoolean("enabled", true),
+                            autoRollback.getBoolean("restart-after", false)));
+        }
     }
 
     private final MineCICD plugin;
@@ -274,7 +300,6 @@ public class MineCICDConfig {
                 discordSection.getString("ping-role-id", ""),
                 List.copyOf(discordSection.getStringList("events")));
 
-    
         this.approval = new Approval(
                 config.getBoolean("approval.enabled", false),
                 Math.max(10, config.getInt("approval.timeout-seconds", 120)),
@@ -283,19 +308,7 @@ public class MineCICDConfig {
                         : config.getStringList("approval.require-on")),
                 config.getBoolean("approval.skip-if-no-changes", true));
 
-        final ConfigurationSection hc = config.getConfigurationSection("health-check");
-        final ConfigurationSection autoRollback = hc.getConfigurationSection("auto-rollback");
-        this.healthCheck = new HealthCheck(
-                hc.getBoolean("enabled", false),
-                hc.getBoolean("run-inside-actions", true),
-                hc.getBoolean("runs-after-restart", true),
-                Math.max(5, hc.getInt("timeout-seconds", 60)),
-                hc.getString("command", ""),
-                hc.getString("script", ""),
-                List.copyOf(hc.getStringList("require-plugins")),
-                new AutoRollbackConfig(
-                        autoRollback.getBoolean("enabled", true),
-                        autoRollback.getBoolean("restart-after", false)));
+        this.healthCheck = HealthCheck.from(config.getConfigurationSection("health-check"));
     }
 
     public Git git() {

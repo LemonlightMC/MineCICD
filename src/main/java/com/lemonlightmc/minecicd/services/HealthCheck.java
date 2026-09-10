@@ -2,13 +2,8 @@ package com.lemonlightmc.minecicd.services;
 
 import com.lemonlightmc.minecicd.MineCICD;
 import com.lemonlightmc.minecicd.exceptions.ScriptException;
+import com.lemonlightmc.minecicd.messaging.Messages;
 import com.lemonlightmc.minecicd.util.Threads;
-
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
  * Post-deploy health check. Supports a script (nonzero exit / error fails), an
@@ -29,19 +24,24 @@ public class HealthCheck {
     }
 
     private final MineCICD plugin;
-    private final ExecutorService executor;
+    private final com.lemonlightmc.minecicd.MineCICDConfig.HealthCheck config;
 
     public HealthCheck(final MineCICD plugin) {
         this.plugin = plugin;
-        this.executor = java.util.concurrent.Executors.newCachedThreadPool(r -> {
-            final Thread t = new Thread(r, "minecicd-health-check");
-            t.setDaemon(true);
-            return t;
-        });
+        this.config = plugin.config().healthCheck();
+
     }
 
     public boolean enabled() {
         return plugin.config().healthCheck().enabled();
+    }
+
+    public boolean runAfterRestart() {
+        return plugin.config().healthCheck().enabled() && plugin.config().healthCheck().runsAfterRestart();
+    }
+
+    public boolean runAfterAction() {
+        return plugin.config().healthCheck().enabled() && plugin.config().healthCheck().runInsideActions();
     }
 
     /**
@@ -50,39 +50,30 @@ public class HealthCheck {
      * @param timeoutSeconds overall timeout; a check that exceeds it fails
      * @return the first failing reason, or a pass result
      */
-    public Result check(final long timeoutSeconds) {
-        final Future<Result> future = executor.submit(this::runChecks);
-        try {
-            return future.get(timeoutSeconds, TimeUnit.SECONDS);
-        } catch (final TimeoutException e) {
-            future.cancel(true);
-            return Result.fail("health check timed out after " + timeoutSeconds + "s");
-        } catch (final ExecutionException | InterruptedException e) {
-            return Result.fail("health check errored: " + rootMessage(e));
+    public Result check() {
+        if (!config.enabled()) {
+            return Result.pass();
         }
-    }
-
-    private Result runChecks() {
-        final var cfg = plugin.config().healthCheck();
-
-        if (cfg.script() != null && !cfg.script().isBlank()) {
+        if (config.script() != null) {
             try {
-                plugin.scriptManager().run(cfg.script(), null, line -> {
+                plugin.scriptManager().run(config.script(), null, line -> {
                 });
             } catch (final ScriptException e) {
-                return Result.fail("health script '" + cfg.script() + "' failed: " + rootMessage(e));
+                return Result.fail("health script '" + config.script() + "' failed: " + Messages.rootMessage(e));
             } catch (final Exception e) {
-                return Result.fail("health script '" + cfg.script() + "' errored: " + rootMessage(e));
+                return Result.fail("health script '" + config.script() + "' errored: " + Messages.rootMessage(e));
             }
         }
 
-        if (cfg.command() != null && !cfg.command().isBlank()) {
-            final String command = cfg.command().startsWith("/") ? cfg.command().substring(1) : cfg.command();
+        if (config.command() != null) {
             Threads.marshaled(plugin, () -> plugin.getServer().dispatchCommand(
-                    org.bukkit.Bukkit.getConsoleSender(), command));
+                    org.bukkit.Bukkit.getConsoleSender(), config.command()));
         }
 
-        for (final String name : cfg.requirePlugins()) {
+        for (final String name : config.requirePlugins()) {
+            if (name == null || name.isBlank()) {
+                continue;
+            }
             final org.bukkit.plugin.Plugin p = plugin.getServer().getPluginManager().getPlugin(name);
             if (p == null) {
                 return Result.fail("required plugin not found: " + name);
@@ -94,16 +85,4 @@ public class HealthCheck {
         return Result.pass();
     }
 
-    public void shutdown() {
-        executor.shutdownNow();
-    }
-
-    private static String rootMessage(final Throwable t) {
-        Throwable current = t;
-        while (current.getCause() != null) {
-            current = current.getCause();
-        }
-        final String message = current.getMessage();
-        return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
-    }
 }

@@ -196,15 +196,15 @@ public class CicdService implements ControlServer.Delegate {
             plugin.auditLogger().log(actor, source, "pull", true,
                     "applied " + result.commits().size() + " commit(s)");
 
-            if (plugin.healthCheck().enabled() && plugin.config().healthCheck().runInsideActions()) {
-                final HealthCheck.Result hc = plugin.healthCheck()
-                        .check(plugin.config().healthCheck().timeoutSeconds());
+            if (plugin.healthCheck().runAfterAction()) {
+                final HealthCheck.Result hc = plugin.healthCheck().check();
                 if (!hc.ok()) {
                     final long hcDuration = System.currentTimeMillis() - start;
                     plugin.events().emit(Type.DEPLOY_FAILED, actor, "health", hc.message(), null,
                             plugin.config().git().branch(), hcDuration);
                     rollbackDeploy(sender, actor, hc.message(), source);
-                    plugin.messages().send(sender, "health-check-failed", Map.of("error", Messages.escape(hc.message())));
+                    plugin.messages().send(sender, "health-check-failed",
+                            Map.of("error", Messages.escape(hc.message())));
                     return false;
                 }
             }
@@ -620,9 +620,8 @@ public class CicdService implements ControlServer.Delegate {
                 final long start = System.currentTimeMillis();
                 try {
                     plugin.gitService().pull(false);
-                    if (plugin.healthCheck().enabled() && plugin.config().healthCheck().runInsideActions()) {
-                        final HealthCheck.Result hc = plugin.healthCheck()
-                                .check(plugin.config().healthCheck().timeoutSeconds());
+                    if (plugin.healthCheck().runAfterAction()) {
+                        final HealthCheck.Result hc = plugin.healthCheck().check();
                         if (!hc.ok()) {
                             plugin.events().emit(Type.DEPLOY_FAILED, source, "health", hc.message(), requestId,
                                     branch, System.currentTimeMillis() - start);
@@ -728,9 +727,8 @@ public class CicdService implements ControlServer.Delegate {
             controlStatus.update(request.requestId(), Status.RUNNING, null,
                     request.index(), request.total());
             // post-restart health check: verify the server came back healthy
-            if (plugin.healthCheck().enabled() && plugin.config().healthCheck().runsAfterRestart()) {
-                final HealthCheck.Result hc = plugin.healthCheck()
-                        .check(plugin.config().healthCheck().timeoutSeconds());
+            if (plugin.healthCheck().runAfterRestart()) {
+                final HealthCheck.Result hc = plugin.healthCheck().check();
                 if (!hc.ok()) {
                     plugin.getLogger().severe("Health check failed after server restart: " + hc.message());
                     request.failed("health check failed after restart: " + hc.message());

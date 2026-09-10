@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
+import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 
 public class ScriptManager {
@@ -57,8 +58,11 @@ public class ScriptManager {
     }
 
     public void run(final String name, final CommandSender executor, final Consumer<String> consoleLine) {
-        final Script script = scripts.get(name);
-        script.run(executor, plugin, consoleLine);
+            final Script script = scripts.get(name);
+            if (script == null) {
+                return;
+            }
+            script.run(executor, plugin, consoleLine);
     }
 
 }
