@@ -126,6 +126,8 @@ public class GitService {
     private final MineCICD plugin;
     private Git git;
     private Repository repo;
+    private volatile Git liveGit;
+    private volatile Repository liveRepo;
 
     public GitService(final MineCICD plugin) {
         this.plugin = plugin;
@@ -167,6 +169,8 @@ public class GitService {
                     .setInitialBranch(plugin.config().git().branch())
                     .call();
             repo = git.getRepository();
+            liveGit = git;
+            liveRepo = repo;
             final String url = plugin.config().git().repo();
             if (url != null && !url.isBlank()) {
                 ensureRemote();
@@ -513,13 +517,31 @@ public class GitService {
         }
     }
 
-    public synchronized void close() {
-        if (git != null) {
-            git.close();
-            git = null;
+    /**
+     * Closes the repository. May be called from any thread — grabs the live
+     * references without waiting for the synchronized lock so that an
+     * in-progress push/fetch transport is torn down immediately rather than
+     * blocking shutdown.
+     */
+    public void close() {
+        final Git g = liveGit;
+        final Repository r = liveRepo;
+        liveGit = null;
+        liveRepo = null;
+        if (g != null) {
+            try {
+                g.close();
+            } catch (final Exception ignored) {
+            }
         }
-        if (repo != null) {
-            repo.close();
+        if (r != null) {
+            try {
+                r.close();
+            } catch (final Exception ignored) {
+            }
+        }
+        synchronized (this) {
+            git = null;
             repo = null;
         }
     }
@@ -537,6 +559,8 @@ public class GitService {
         }
         repo = opened;
         git = new Git(opened);
+        liveGit = git;
+        liveRepo = repo;
     }
 
     private void openOrInit() {
@@ -549,6 +573,8 @@ public class GitService {
                         .setInitialBranch(plugin.config().git().branch())
                         .call();
                 repo = git.getRepository();
+                liveGit = git;
+                liveRepo = repo;
                 deployGitignoreTemplate();
             }
         } catch (final GitException e) {
@@ -622,7 +648,9 @@ public class GitService {
 
     private void fetch() {
         try {
-            git.fetch().setRemote("origin").setCredentialsProvider(credentials()).call();
+            git.fetch().setRemote("origin").setCredentialsProvider(credentials())
+                    .setTimeout(plugin.config().git().timeoutSeconds())
+                    .call();
         } catch (final Exception e) {
             throw new GitException("Fetch failed: " + rootMessage(e), e);
         }
@@ -827,6 +855,7 @@ public class GitService {
                     .setRemote("origin")
                     .setRefSpecs(new RefSpec("refs/heads/" + branch + ":refs/heads/" + branch))
                     .setCredentialsProvider(credentials())
+                    .setTimeout(plugin.config().git().timeoutSeconds())
                     .call();
             for (final org.eclipse.jgit.transport.PushResult result : results) {
                 for (final RemoteRefUpdate update : result.getRemoteUpdates()) {

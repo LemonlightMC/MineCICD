@@ -18,6 +18,10 @@ git:
   # remote repository, and the host server folder must sit at that path inside the
   # repository checkout (.git is then found by searching upward).
   remote-server-root: ""
+  # Timeout for network operations (push, fetch) in seconds. If a remote
+  # operation takes longer than this, it will fail with an error instead of
+  # hanging indefinitely. Minimum 5 seconds.
+  timeout-seconds: 30
 
 # Whether experimental jar unloading and loading should be enabled
 # This requires PlugManX to be installed and working on your server

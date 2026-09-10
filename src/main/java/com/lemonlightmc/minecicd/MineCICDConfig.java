@@ -26,7 +26,8 @@ import java.util.Set;
  */
 public class MineCICDConfig {
 
-    public record Git(String user, String pass, String repo, String email, String branch, String remoteServerRoot) {
+    public record Git(String user, String pass, String repo, String email, String branch, String remoteServerRoot,
+            int timeoutSeconds) {
     }
 
     public record BossBar(boolean enabled, int durationTicks) {
@@ -231,7 +232,8 @@ public class MineCICDConfig {
                 gitSection.getString("repo", ""),
                 gitSection.getString("email", "minecicd@minecicd.local"),
                 gitSection.getString("branch", "master"),
-                gitSection.getString("remote-server-root", ""));
+                gitSection.getString("remote-server-root", ""),
+                Math.max(5, gitSection.getInt("timeout-seconds", 30)));
 
         final ConfigurationSection barSection = config.getConfigurationSection("bossbar");
         this.bossBar = new BossBar(barSection.getBoolean("enabled", true), barSection.getInt("duration", 100));
