@@ -1,4 +1,4 @@
-package com.lemonlightmc.minecicd.scripts;
+package com.lemonlightmc.minecicd.data;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -11,11 +11,10 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import org.bukkit.Bukkit;
-import org.bukkit.command.CommandSender;
 
-import com.lemonlightmc.minecicd.MineCICD;
+import com.lemonlightmc.minecicd.api.MineCICDApi;
 import com.lemonlightmc.minecicd.exceptions.ScriptException;
-import com.lemonlightmc.minecicd.messaging.Messages;
+import com.lemonlightmc.minecicd.util.Utils;
 
 public class Script {
 
@@ -79,18 +78,18 @@ public class Script {
    * lines processed, throwing on the first failing console command or shell
    * error.
    */
-  public void run(final CommandSender executor, final MineCICD plugin, final Consumer<String> consoleLine) {
+  public void run(final Actor actor, final Consumer<String> consoleLine) {
     final long start = System.currentTimeMillis();
 
     for (int i = 0; i < this.lines.length; i++) {
       final String line = lines[i];
-      plugin.getLogger().info("[script]" + name + " - Executing (line " + i + "): " + line);
+      MineCICDApi.logger().info("[script]" + name + " - Executing (line " + i + "): " + line);
       if (line.startsWith("! ")) {
         final String command = line.substring(2).trim();
-        runShell(command, executor, plugin, i + 1);
+        runShell(command, actor, i + 1);
       } else {
         final String command = line.startsWith("/") ? line.substring(1) : line;
-        dispatchCommand(command, executor, plugin, i + 1);
+        dispatchCommand(command, actor, i + 1);
       }
       if (consoleLine != null) {
         consoleLine.accept(line);
@@ -100,12 +99,13 @@ public class Script {
     recordRun(start);
   }
 
-  private void dispatchCommand(final String command, final CommandSender executor, final MineCICD plugin,
-      final int line) {
+  private void dispatchCommand(final String command, final Actor actor, final int line) {
     try {
-      final boolean success = plugin.getServer().getScheduler()
-          .callSyncMethod(plugin, () -> plugin.getServer().dispatchCommand(
-              executor != null ? executor : Bukkit.getConsoleSender(), command))
+      final boolean success = MineCICDApi.plugin().getServer().getScheduler()
+          .callSyncMethod(MineCICDApi
+              .plugin(),
+              () -> MineCICDApi.plugin().getServer().dispatchCommand(
+                  actor != null ? actor.getCommandSender() : Bukkit.getConsoleSender(), command))
           .get();
       if (!success) {
         throw new ScriptException(name + " - Command failed (line " + line + "): /" + command);
@@ -113,11 +113,12 @@ public class Script {
     } catch (final ScriptException e) {
       throw e;
     } catch (final Exception e) {
-      throw new ScriptException(name + " - Command failed (line " + line + "): /" + command + " -> " + Messages.rootMessage(e));
+      throw new ScriptException(
+          name + " - Command failed (line " + line + "): /" + command + " -> " + Utils.rootMessage(e));
     }
   }
 
-  private void runShell(final String command, final CommandSender executor, final MineCICD plugin, final int line) {
+  private void runShell(final String command, final Actor actor, final int line) {
     try {
       final ProcessBuilder pb = new ProcessBuilder();
       final String os = System.getProperty("os.name", "").toLowerCase();
@@ -128,7 +129,7 @@ public class Script {
       }
       pb.redirectErrorStream(true);
       // M-04: sandbox - restrict working dir, sanitize env
-      pb.directory(plugin.serverRoot().toFile());
+      pb.directory(MineCICDApi.serverRoot().toFile());
       // clear and allowlist minimal env
       final java.util.Map<String, String> env = pb.environment();
       final String path = env.get("PATH");
@@ -144,7 +145,7 @@ public class Script {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(out, StandardCharsets.UTF_8))) {
           String l;
           while ((l = reader.readLine()) != null) {
-            plugin.getLogger().info("[script] " + l);
+            MineCICDApi.logger().info("[script] " + l);
           }
         } catch (final IOException ignored) {
         }
@@ -166,7 +167,7 @@ public class Script {
       throw e;
     } catch (final Exception e) {
       throw new ScriptException(
-          name + " - Shell command failed (line " + line + "): " + command + " -> " + Messages.rootMessage(e));
+          name + " - Shell command failed (line " + line + "): " + command + " -> " + Utils.rootMessage(e));
     }
   }
 

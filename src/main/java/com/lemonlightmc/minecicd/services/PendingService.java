@@ -1,4 +1,4 @@
-package com.lemonlightmc.minecicd.pending;
+package com.lemonlightmc.minecicd.services;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -7,22 +7,23 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
+
+import com.lemonlightmc.minecicd.api.MineCICDApi;
+import com.lemonlightmc.minecicd.data.PendingRequest;
 
 /**
  * On-disk store for control-API requests. An accepted request is written here
- * before
- * any action runs; the runner advances a pointer as actions complete.
- * Non-terminated
- * requests are resumed after the server is fully loaded on boot. Retries by
- * requestId
- * are idempotent (no double-run).
+ * before any action runs; the runner advances a pointer as actions complete.
+ * Non-terminated requests are resumed after the server is fully loaded on boot.
+ * Retries by requestId are idempotent (no double-run).
  */
-public class PendingStore {
+public class PendingService {
 
     private final Path dir;
 
-    public PendingStore(final Path dataFolder) {
-        this.dir = dataFolder.resolve("pending");
+    public PendingService() {
+        this.dir = MineCICDApi.dataFolder().resolve("pending");
     }
 
     public Path dir() {
@@ -67,7 +68,7 @@ public class PendingStore {
             if (!Files.isDirectory(dir)) {
                 return out;
             }
-            try (var stream = Files.list(dir)) {
+            try (Stream<Path> stream = Files.list(dir)) {
                 stream.filter(p -> p.getFileName().toString().endsWith(".json")).sorted().forEach(p -> {
                     try {
                         out.add(PendingRequest.fromJson(Files.readString(p, StandardCharsets.UTF_8)));

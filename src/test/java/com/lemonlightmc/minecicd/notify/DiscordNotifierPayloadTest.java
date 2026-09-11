@@ -2,7 +2,7 @@ package com.lemonlightmc.minecicd.notify;
 
 import com.lemonlightmc.minecicd.events.DeploymentEvents.Event;
 import com.lemonlightmc.minecicd.events.DeploymentEvents.Type;
-import com.lemonlightmc.minecicd.services.DiscordNotifier;
+import com.lemonlightmc.minecicd.external.DiscordNotifier;
 
 import org.junit.jupiter.api.Test;
 

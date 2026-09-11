@@ -1,16 +1,15 @@
 package com.lemonlightmc.minecicd.http;
 
-import com.lemonlightmc.minecicd.pending.PendingRequest.Status;
-
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.lemonlightmc.minecicd.data.PendingRequest.Status;
+
 /**
  * Per-request terminal status, available for the GitHub Action to poll after
- * the SSE
- * stream drops (e.g. a mid-sequence restart). Also carries an in-memory event
- * counter
- * so recent progress can be replayed to a freshly-attached SSE client.
+ * the SSE stream drops (e.g. a mid-sequence restart). Also carries an in-memory
+ * event counter so recent progress can be replayed to a
+ * freshly-attached SSE client.
  */
 public class ControlStatus {
 

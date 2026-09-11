@@ -1,11 +1,9 @@
 package com.lemonlightmc.minecicd.http;
 
-import com.lemonlightmc.minecicd.MineCICD;
 import com.lemonlightmc.minecicd.MineCICDConfig.Control;
+import com.lemonlightmc.minecicd.api.MineCICDApi;
 import com.lemonlightmc.minecicd.git.CommitActions;
-import com.lemonlightmc.minecicd.git.CommitActions.Action;
-import com.lemonlightmc.minecicd.services.AuditLogger.AuditAction;
-import com.lemonlightmc.minecicd.services.AuditLogger.Source;
+import com.lemonlightmc.minecicd.git.CommitActions.CommitAction;
 import com.lemonlightmc.minecicd.exceptions.ParseException;
 import com.lemonlightmc.minecicd.util.Ids;
 import com.lemonlightmc.minecicd.util.Threads;
@@ -38,7 +36,7 @@ import org.json.JSONObject;
 public class ControlServer {
 
     public interface Delegate {
-        void acceptRequest(String requestId, List<Action> actions, String branch, Source source);
+        void acceptRequest(String requestId, List<CommitAction> actions, String branch);
 
         ProgressStream progressStream(String requestId);
 
@@ -49,9 +47,10 @@ public class ControlServer {
         boolean tryAcquireInFlight(String requestId);
 
         void releaseInFlight(String requestId);
+
+        boolean isBusy();
     }
 
-    private final MineCICD plugin;
     private final String host;
     private final int port;
     private final String path;
@@ -61,7 +60,7 @@ public class ControlServer {
     private final RateLimiter rateLimiter;
     private final boolean githubWebhookEnabled;
     private final String githubWebhookSecret;
-    private final List<Action> githubWebhookActions;
+    private final List<CommitAction> githubWebhookActions;
     private static final int MAX_HEADER_BYTES = 4096;
     private static final int MAX_EXCHANGES_PER_REQUEST = 4;
     private static final long SSE_IDLE_TIMEOUT_MS = 60_000L;
@@ -69,9 +68,9 @@ public class ControlServer {
     private HttpServer server;
     private ExecutorService httpExecutor;
     private ScheduledExecutorService failurePurger;
+    private ControlSecurity security;
 
-    public ControlServer(final MineCICD plugin, final Control config) {
-        this.plugin = plugin;
+    public ControlServer(final Control config) {
         this.host = config.host() == null || config.host().isBlank() ? "0.0.0.0" : config.host();
         this.port = config.port();
         this.path = normalizePath(config.path());
@@ -88,10 +87,13 @@ public class ControlServer {
         this.githubWebhookEnabled = gh != null && gh.enabled();
         this.githubWebhookSecret = gh != null ? gh.secret() : "";
         this.githubWebhookActions = parseActions(gh != null ? gh.actions() : List.of());
+        this.security = new ControlSecurity(
+                config.replayWindowSeconds(),
+                config.actions());
     }
 
-    private static List<Action> parseActions(final List<String> raw) {
-        final List<Action> actions = new ArrayList<>();
+    private static List<CommitAction> parseActions(final List<String> raw) {
+        final List<CommitAction> actions = new ArrayList<>();
         for (final String s : raw != null ? raw : List.<String>of()) {
             try {
                 actions.add(CommitActions.parseControlItem(s));
@@ -139,7 +141,7 @@ public class ControlServer {
                 try {
                     rateLimiter.purgeExpired(System.currentTimeMillis());
                 } catch (final Exception e) {
-                    plugin.getLogger().warning("Failure cache purge error: " + e.getMessage());
+                    MineCICDApi.logger().warning("Failure cache purge error: " + e.getMessage());
                 }
             }, 60, 60, TimeUnit.SECONDS);
 
@@ -149,20 +151,20 @@ public class ControlServer {
             server.createContext("/" + path + "/status", this::handleStatus);
             if (githubWebhookEnabled) {
                 if (githubWebhookSecret == null || githubWebhookSecret.isEmpty()) {
-                    plugin.getLogger().severe(
+                    MineCICDApi.logger().severe(
                             "control.github-webhook.enabled is true but secret is empty; webhook route NOT started.");
                 } else {
                     server.createContext("/" + path + "/webhook/github", this::handleGithubWebhook);
-                    plugin.getLogger().info("GitHub webhook route registered at /" + path + "/webhook/github");
+                    MineCICDApi.logger().info("GitHub webhook route registered at /" + path + "/webhook/github");
                 }
             }
 
             server.start();
-            plugin.getLogger().info("Control API listening on " + host + ":" + port + "/" + path
+            MineCICDApi.logger().info("Control API listening on " + host + ":" + port + "/" + path
                     + (sslContext != null ? " (HTTPS)" : " (HTTP)"));
             return true;
         } catch (final Exception e) {
-            plugin.getLogger().severe("Unable to start Control API: " + e.getMessage());
+            MineCICDApi.logger().severe("Unable to start Control API: " + e.getMessage());
             return false;
         }
     }
@@ -208,7 +210,7 @@ public class ControlServer {
 
     private void authenticate(final HttpExchange exchange, final String requestId, final byte[] body) {
         final Headers headers = exchange.getRequestHeaders();
-        plugin.security().authenticate(
+        security.authenticate(
                 secret,
                 headers.getFirst("X-MineCICD-Timestamp"),
                 headers.getFirst("X-MineCICD-Nonce"),
@@ -290,7 +292,7 @@ public class ControlServer {
 
             // validate actions
             try {
-                plugin.security().validateActions(request.actions());
+                security.validateActions(request.actions());
             } catch (final ControlSecurity.RejectException e) {
                 respond(exchange, 403, "{\"error\":\"" + jsonEscape(e.getMessage()) + "\"}");
                 return;
@@ -298,7 +300,7 @@ public class ControlServer {
 
             // execute git
             String branch = request.branch();
-            final String configured = plugin.config() == null ? null : plugin.config().git().branch();
+            final String configured = MineCICDApi.config().git().branch();
             if (branch == null || branch.isBlank()) {
                 branch = configured;
             }
@@ -306,39 +308,36 @@ public class ControlServer {
                 respond(exchange, 403, "{\"error\":\"Branch not allowed\"}");
                 return;
             }
-            if (!plugin.cicdService().tryAcquireInFlight(request.requestId())) {
+            if (!MineCICDApi.handler().tryAcquireInFlight(request.requestId())) {
                 respond(exchange, 409, "{\"error\":\"Another request is already in flight\"}");
                 return;
             }
-            plugin.cicdService().acceptRequest(request.requestId(), request.actions(), branch, Source.CONTROL_API);
+            MineCICDApi.handler().acceptRequest(request.requestId(), request.actions(), branch);
             respond(exchange, 202, "{\"accepted\":true,\"requestId\":\"" + jsonEscape(request.requestId()) + "\"}");
 
         } catch (final Exception e) {
-            plugin.getLogger().warning("Control POST error: " + e.getMessage());
+            MineCICDApi.logger().warning("Control POST error: " + e.getMessage());
             respond(exchange, 500, "{\"error\":\"Internal error\"}");
         }
         final long elapsed = (System.nanoTime() - startNano) / 1_000_000;
         if (elapsed > 50) {
-            plugin.getLogger().info("Control POST handled in " + elapsed + "ms");
+            MineCICDApi.logger().info("Control POST handled in " + elapsed + "ms");
         }
     }
 
     private boolean branchMatches(String requested) {
-        final var cfg = plugin.config();
-        if (cfg == null) {
-            return false;
-        }
-        // L-03: normalize null to configured branch, then strict allowlist
+        // normalize null to configured branch, then strict allowlist
         if (requested == null) {
-            requested = cfg.git().branch();
+            requested = MineCICDApi.config().git().branch();
         }
         if (requested == null) {
             return false;
         }
-        if (requested.equals(cfg.git().branch())) {
+        if (requested.equals(MineCICDApi.config().git().branch())) {
             return true;
         }
-        return cfg.control().branches() != null && cfg.control().branches().contains(requested);
+        return MineCICDApi.config().control().branches() != null
+                && MineCICDApi.config().control().branches().contains(requested);
     }
 
     private void handleGithubWebhook(final HttpExchange exchange) {
@@ -382,27 +381,27 @@ public class ControlServer {
             }
             // branch allowlist (same rules as the control API)
             if (!branchMatches(branch)) {
-                plugin.getLogger().info("GitHub webhook ignored push to branch " + branch + " (not allowed)");
+                MineCICDApi.logger().info("GitHub webhook ignored push to branch " + branch + " (not allowed)");
                 respond(exchange, 200, "{\"ok\":true,\"ignored\":\"branch not allowed\"}");
                 return;
             }
             try {
-                plugin.security().validateActions(githubWebhookActions);
+                security.validateActions(githubWebhookActions);
             } catch (final ControlSecurity.RejectException e) {
                 respond(exchange, 403, "{\"error\":\"" + jsonEscape(e.getMessage()) + "\"}");
                 return;
             }
             final String requestId = Ids.newRequestId();
-            if (!plugin.cicdService().tryAcquireInFlight(requestId)) {
+            if (!MineCICDApi.handler().tryAcquireInFlight(requestId)) {
                 respond(exchange, 409, "{\"error\":\"Another request is already in flight\"}");
                 return;
             }
-            plugin.cicdService().acceptRequest(requestId, githubWebhookActions, branch, Source.WEBHOOK);
+            MineCICDApi.handler().acceptRequest(requestId, githubWebhookActions, branch);
             respond(exchange, 202,
                     "{\"accepted\":true,\"requestId\":\"" + jsonEscape(requestId) + "\",\"branch\":\""
                             + jsonEscape(branch) + "\"}");
         } catch (final Exception e) {
-            plugin.getLogger().warning("GitHub webhook error: " + e.getMessage());
+            MineCICDApi.logger().warning("GitHub webhook error: " + e.getMessage());
             respond(exchange, 500, "{\"error\":\"Internal error\"}");
         }
     }
@@ -418,7 +417,7 @@ public class ControlServer {
         }
 
         // cap exchanges per requestId
-        final ProgressStream existing = plugin.cicdService().progressStream(requestId);
+        final ProgressStream existing = MineCICDApi.handler().progressStream(requestId);
         if (existing != null && existing.exchanges().size() >= MAX_EXCHANGES_PER_REQUEST) {
             respond(exchange, 429, "{\"error\":\"Too many streams\"}");
             return;
@@ -433,7 +432,7 @@ public class ControlServer {
         } catch (final IOException e) {
             return;
         }
-        ProgressStream stream = plugin.cicdService().progressStream(requestId);
+        ProgressStream stream = MineCICDApi.handler().progressStream(requestId);
         if (stream == null) {
             stream = new ProgressStream();
         }
@@ -455,7 +454,7 @@ public class ControlServer {
                         activeStream.close();
                         break;
                     }
-                    final int count = plugin.cicdService().controlStatus().eventCount(requestId);
+                    final int count = MineCICDApi.handler().controlStatus().eventCount(requestId);
                     if (count > current) {
                         current = count;
                         start = System.currentTimeMillis();
@@ -486,7 +485,7 @@ public class ControlServer {
         }
 
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
-        final ControlStatus.Entry entry = plugin.cicdService().controlStatus().get(requestId);
+        final ControlStatus.Entry entry = MineCICDApi.handler().controlStatus().get(requestId);
         if (entry == null) {
             respond(exchange, 404, "{\"error\":\"Unknown requestId\"}");
             return;

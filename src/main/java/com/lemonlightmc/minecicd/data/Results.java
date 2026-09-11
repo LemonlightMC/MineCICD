@@ -1,4 +1,4 @@
-package com.lemonlightmc.minecicd.git;
+package com.lemonlightmc.minecicd.data;
 
 import org.eclipse.jgit.revwalk.RevCommit;
 
@@ -28,5 +28,13 @@ public final class Results {
     }
 
     public record StatusInfo(String branch, String remote, int localChanges, int remoteChanges) {
+    }
+
+    public enum DeployResult {
+        SUCCESS,
+        NO_CHANGES,
+        FAILED,
+        ROLLBACK;
+
     }
 }

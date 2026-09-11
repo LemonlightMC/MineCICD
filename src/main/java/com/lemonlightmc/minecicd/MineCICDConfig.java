@@ -78,7 +78,7 @@ public class MineCICDConfig {
     public record GithubWebhook(boolean enabled, String secret, List<String> actions) {
     }
 
-    public record Audit(boolean enabled, int maxAgeDays) {
+    public record Audit(boolean enabled, int maxFiles, int maxAgeDays) {
     }
 
     public record Discord(boolean enabled, String url, String username, String avatarUrl, String pingRoleId,
@@ -289,7 +289,8 @@ public class MineCICDConfig {
                         ghActions.isEmpty() ? List.of("pull") : List.copyOf(ghActions)));
 
         final ConfigurationSection auditSection = config.getConfigurationSection("audit");
-        this.audit = new Audit(auditSection.getBoolean("enabled", true), auditSection.getInt("max-age-days", 90));
+        this.audit = new Audit(auditSection.getBoolean("enabled", true), auditSection.getInt("max-files", 10),
+                auditSection.getInt("max-age-days", 90));
 
         final ConfigurationSection discordSection = config.getConfigurationSection("notifications.discord");
         this.discord = new Discord(

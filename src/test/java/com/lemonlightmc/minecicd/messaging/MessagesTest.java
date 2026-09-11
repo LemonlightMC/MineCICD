@@ -2,6 +2,8 @@ package com.lemonlightmc.minecicd.messaging;
 
 import org.junit.jupiter.api.Test;
 
+import com.lemonlightmc.minecicd.services.Messages;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 

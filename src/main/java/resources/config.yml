@@ -140,20 +140,6 @@ notifications:
       - deploy-fail
       - rollback
 
-# Scheduled auto-pull: deploy from the remote on a simple interval.
-auto-pull:
-  enabled: false
-  # How often to pull, in minutes. Minimum 1.
-  interval-minutes: 60
-  # Optional quiet hours during which no automatic pull runs (24h "HH:mm").
-  quiet-hours:
-    enabled: false
-    from: "03:00"
-    to: "07:00"
-  # Stop auto-pulling after this many consecutive failures (prevents a broken
-  # remote from hammering the server). A successful pull resets the counter.
-  max-consecutive-failures: 5
-
 # In-game change preview: show a diff summary and require /minecicd confirm
 # before a pull executes.
 approval:

@@ -4,7 +4,7 @@ import org.eclipse.jgit.attributes.FilterCommand;
 import org.eclipse.jgit.attributes.FilterCommandFactory;
 import org.eclipse.jgit.lib.Repository;
 
-import com.lemonlightmc.minecicd.secrets.SecretManager.SecretMapping;
+import com.lemonlightmc.minecicd.services.SecretFilterService.SecretMapping;
 
 import java.io.InputStream;
 import java.io.OutputStream;

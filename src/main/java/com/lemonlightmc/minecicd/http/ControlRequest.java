@@ -2,7 +2,8 @@ package com.lemonlightmc.minecicd.http;
 
 import com.lemonlightmc.minecicd.exceptions.ParseException;
 import com.lemonlightmc.minecicd.git.CommitActions;
-import com.lemonlightmc.minecicd.git.CommitActions.Action;
+import com.lemonlightmc.minecicd.git.CommitActions.CommitAction;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -13,9 +14,9 @@ public class ControlRequest {
 
     private final String requestId;
     private final String branch;
-    private final List<Action> actions;
+    private final List<CommitAction> actions;
 
-    public ControlRequest(final String requestId, final String branch, final List<Action> actions) {
+    public ControlRequest(final String requestId, final String branch, final List<CommitAction> actions) {
         this.requestId = requestId;
         this.branch = branch;
         this.actions = actions;
@@ -29,7 +30,7 @@ public class ControlRequest {
         return branch;
     }
 
-    public List<Action> actions() {
+    public List<CommitAction> actions() {
         return actions;
     }
 
@@ -81,7 +82,7 @@ public class ControlRequest {
             throw new ParseException("Missing actions");
         }
         final JSONArray array = json.getJSONArray("actions");
-        final List<Action> actions = new ArrayList<>();
+        final List<CommitAction> actions = new ArrayList<>();
         for (int i = 0; i < array.length(); i++) {
             if (array.get(i) instanceof final String str) {
                 actions.add(CommitActions.parseControlItem(str));

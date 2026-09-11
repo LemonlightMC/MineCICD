@@ -1,6 +1,6 @@
 package com.lemonlightmc.minecicd.exceptions;
 
-import com.lemonlightmc.minecicd.messaging.Messages;
+import com.lemonlightmc.minecicd.util.Utils;
 
 /**
  * Maps common failure signatures to an actionable fix suggestion, surfaced as
@@ -59,6 +59,6 @@ public final class ErrorCatalog {
     }
 
     public static String suggest(final Throwable t) {
-        return suggest(Messages.rootMessage(t));
+        return suggest(Utils.rootMessage(t));
     }
 }

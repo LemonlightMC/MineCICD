@@ -1,8 +1,9 @@
 package com.lemonlightmc.minecicd.http;
 
 import com.lemonlightmc.minecicd.MineCICDConfig;
-import com.lemonlightmc.minecicd.git.CommitActions.Action;
+import com.lemonlightmc.minecicd.git.CommitActions.CommitAction;
 import com.lemonlightmc.minecicd.git.CommitActions.ActionType;
+import com.lemonlightmc.minecicd.util.Utils;
 
 import java.io.FileInputStream;
 import java.io.InputStream;
@@ -89,10 +90,10 @@ public class ControlSecurity {
             throw new RejectException("Nonce cache full");
         }
         // hash body to make canonical non-ambiguous on '|' in body
-        final String bodyHash = sha256Hex(body);
+        final String bodyHash = Utils.sha256Hex(body);
         final String canonical = timestamp + "|" + nonceHeader + "|" + requestIdHeader + "|" + bodyHash;
         final byte[] expected = hmac(secret, canonical.getBytes(StandardCharsets.UTF_8));
-        final byte[] actual = hexDecode(providedMac);
+        final byte[] actual = Utils.hexDecode(providedMac);
         if (actual == null || actual.length != expected.length) {
             throw new RejectException("Invalid signature");
         }
@@ -115,36 +116,13 @@ public class ControlSecurity {
         }
     }
 
-    public static String hex(final byte[] bytes) {
-        final StringBuilder sb = new StringBuilder(bytes.length * 2);
-        for (final byte b : bytes) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
-    }
-
-    private static byte[] hexDecode(final String hex) {
-        if (hex.length() % 2 != 0) {
-            return null;
-        }
-        try {
-            final byte[] out = new byte[hex.length() / 2];
-            for (int i = 0; i < out.length; i++) {
-                out[i] = (byte) Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
-            }
-            return out;
-        } catch (final NumberFormatException e) {
-            return null;
-        }
-    }
-
     /**
      * Checks that every action is enabled (per-action flag) and, for
      * commands/scripts, allowed by its exact-name allowlist.
      * Also validates script names against a safe pattern.
      */
-    public void validateActions(final List<Action> actions) {
-        for (final Action action : actions) {
+    public void validateActions(final List<CommitAction> actions) {
+        for (final CommitAction action : actions) {
             if (!actionsConfig.allowedActions().contains(action.type())) {
                 throw new RejectException("Action not enabled: " + action);
             }
@@ -196,15 +174,6 @@ public class ControlSecurity {
 
     private void pruneNonces(final long nowSeconds) {
         seenNonces.entrySet().removeIf(e -> nowSeconds - e.getValue() > replayWindowSeconds + 60);
-    }
-
-    private static String sha256Hex(final byte[] data) {
-        try {
-            final MessageDigest md = MessageDigest.getInstance("SHA-256");
-            return hex(md.digest(data == null ? new byte[0] : data));
-        } catch (final Exception e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
     }
 
     /**

@@ -1,8 +1,7 @@
-package com.lemonlightmc.minecicd.pending;
+package com.lemonlightmc.minecicd.data;
 
-import com.lemonlightmc.minecicd.git.CommitActions.Action;
+import com.lemonlightmc.minecicd.git.CommitActions.CommitAction;
 import com.lemonlightmc.minecicd.git.CommitActions.ActionType;
-import com.lemonlightmc.minecicd.services.AuditLogger.Source;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -20,26 +19,21 @@ public class PendingRequest {
     }
 
     private final String requestId;
-    private final List<Action> actions;
+    private final List<CommitAction> actions;
     private final int total;
     private int index;
     private Status status;
     private String error;
     private final String branch;
-    private final Source source;
 
-    public PendingRequest(final String requestId, final List<Action> actions, final String branch) {
-        this(requestId, actions, 0, Status.RUNNING, null, branch, Source.CONTROL_API);
+    public PendingRequest(final String requestId, final List<CommitAction> actions, final String branch) {
+        this(requestId, actions, 0, Status.RUNNING, null, branch);
     }
 
-    public PendingRequest(final String requestId, final List<Action> actions, final String branch,
-            final Source source) {
-        this(requestId, actions, 0, Status.RUNNING, null, branch, source);
-    }
-
-    private PendingRequest(final String requestId, final List<Action> actions, final int index, final Status status,
+    private PendingRequest(final String requestId, final List<CommitAction> actions, final int index,
+            final Status status,
             final String error,
-            final String branch, final Source source) {
+            final String branch) {
         this.requestId = requestId;
         this.actions = new ArrayList<>(actions);
         this.total = actions.size();
@@ -47,12 +41,12 @@ public class PendingRequest {
         this.status = status;
         this.error = error;
         this.branch = branch;
-        this.source = source == null ? Source.CONTROL_API : source;
     }
 
-    private PendingRequest(final String requestId, final List<Action> actions, final int index, final String status,
+    private PendingRequest(final String requestId, final List<CommitAction> actions, final int index,
+            final String status,
             final String error,
-            final String branch, final Source source) {
+            final String branch) {
         this.requestId = requestId;
         this.actions = new ArrayList<>(actions);
         this.total = actions.size();
@@ -60,7 +54,6 @@ public class PendingRequest {
         this.status = parseStatus(status);
         this.error = error;
         this.branch = branch;
-        this.source = source == null ? Source.CONTROL_API : source;
     }
 
     private static Status parseStatus(final String status) {
@@ -78,7 +71,7 @@ public class PendingRequest {
         return requestId;
     }
 
-    public List<Action> actions() {
+    public List<CommitAction> actions() {
         return actions;
     }
 
@@ -102,15 +95,11 @@ public class PendingRequest {
         return branch;
     }
 
-    public Source source() {
-        return source;
-    }
-
     public boolean hasRemaining() {
         return index < total;
     }
 
-    public Action current() {
+    public CommitAction current() {
         return actions.get(index);
     }
 
@@ -137,9 +126,8 @@ public class PendingRequest {
         final JSONObject json = new JSONObject();
         json.put("requestId", requestId);
         json.put("branch", branch == null ? "" : branch);
-        json.put("source", source == null ? "" : source);
         final JSONArray array = new JSONArray();
-        for (final Action action : actions) {
+        for (final CommitAction action : actions) {
             final JSONObject a = new JSONObject();
             a.put("type", action.type().name());
             a.put("argument", action.argument() == null ? "" : action.argument());
@@ -158,11 +146,11 @@ public class PendingRequest {
 
     public static PendingRequest fromJson(final JSONObject json) {
         final JSONArray array = json.getJSONArray("actions");
-        final List<Action> actions = new ArrayList<>();
+        final List<CommitAction> actions = new ArrayList<>();
         for (int i = 0; i < array.length(); i++) {
             final JSONObject obj = array.getJSONObject(i);
             final String args = obj.optString("argument", null);
-            actions.add(new Action(ActionType.valueOf(obj.getString("type")),
+            actions.add(new CommitAction(ActionType.valueOf(obj.getString("type")),
                     args != null && args.isEmpty() ? null : args));
         }
 
@@ -172,7 +160,6 @@ public class PendingRequest {
                 json.optInt("index", 0),
                 json.optString("status", Status.RUNNING.name()),
                 json.optString("error", ""),
-                json.optString("branch", ""),
-                Source.from(json.optString("source", "control-api")));
+                json.optString("branch", ""));
     }
 }

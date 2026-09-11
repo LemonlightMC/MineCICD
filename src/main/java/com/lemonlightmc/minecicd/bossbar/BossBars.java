@@ -1,6 +1,6 @@
 package com.lemonlightmc.minecicd.bossbar;
 
-import com.lemonlightmc.minecicd.MineCICD;
+import com.lemonlightmc.minecicd.api.MineCICDApi;
 import com.lemonlightmc.minecicd.util.Threads;
 
 import net.kyori.adventure.bossbar.BossBar;
@@ -12,34 +12,32 @@ import java.util.Map;
 
 public class BossBars {
 
-    private final MineCICD plugin;
     private boolean enabled;
     private int durationTicks;
     private BossBar current;
 
-    public BossBars(final MineCICD plugin) {
-        this.plugin = plugin;
-        this.enabled = plugin.config().bossBar().enabled();
-        this.durationTicks = plugin.config().bossBar().durationTicks();
+    public BossBars() {
+        this.enabled = MineCICDApi.config().bossBar().enabled();
+        this.durationTicks = MineCICDApi.config().bossBar().durationTicks();
     }
 
     public void reload() {
-        this.enabled = plugin.config().bossBar().enabled();
-        this.durationTicks = plugin.config().bossBar().durationTicks();
+        this.enabled = MineCICDApi.config().bossBar().enabled();
+        this.durationTicks = MineCICDApi.config().bossBar().durationTicks();
         if (!enabled) {
             removeCurrent();
         }
     }
 
     public void show(final String path, final Map<String, String> placeholders) {
-        show(plugin.messages().get("bossbar-" + path, placeholders));
+        show(MineCICDApi.messages().get("bossbar-" + path, placeholders));
     }
 
     public void show(final Component name) {
         if (!enabled) {
             return;
         }
-        Threads.marshaled(plugin, () -> showAsyncSafe(name));
+        Threads.marshaled(() -> showAsyncSafe(name));
     }
 
     private void showAsyncSafe(final Component name) {
@@ -51,7 +49,7 @@ public class BossBars {
             }
         }
         current = bar;
-        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+        MineCICDApi.plugin().getServer().getScheduler().runTaskLater(MineCICDApi.plugin(), () -> {
             if (current == bar) {
                 removeCurrent();
             }

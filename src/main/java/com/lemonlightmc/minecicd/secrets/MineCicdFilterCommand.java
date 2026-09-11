@@ -2,7 +2,7 @@ package com.lemonlightmc.minecicd.secrets;
 
 import org.eclipse.jgit.attributes.FilterCommand;
 
-import com.lemonlightmc.minecicd.secrets.SecretManager.SecretMapping;
+import com.lemonlightmc.minecicd.services.SecretFilterService.SecretMapping;
 
 import java.io.IOException;
 import java.io.InputStream;

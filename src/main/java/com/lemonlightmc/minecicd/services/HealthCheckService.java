@@ -1,9 +1,9 @@
 package com.lemonlightmc.minecicd.services;
 
-import com.lemonlightmc.minecicd.MineCICD;
+import com.lemonlightmc.minecicd.api.MineCICDApi;
 import com.lemonlightmc.minecicd.exceptions.ScriptException;
-import com.lemonlightmc.minecicd.messaging.Messages;
 import com.lemonlightmc.minecicd.util.Threads;
+import com.lemonlightmc.minecicd.util.Utils;
 
 /**
  * Post-deploy health check. Supports a script (nonzero exit / error fails), an
@@ -11,7 +11,7 @@ import com.lemonlightmc.minecicd.util.Threads;
  * must be loaded and enabled). Runs off the worker queue on its own executor;
  * a timeout yields a failure.
  */
-public class HealthCheck {
+public class HealthCheckService {
 
     public record Result(boolean ok, String message) {
         public static Result pass() {
@@ -23,25 +23,22 @@ public class HealthCheck {
         }
     }
 
-    private final MineCICD plugin;
     private final com.lemonlightmc.minecicd.MineCICDConfig.HealthCheck config;
 
-    public HealthCheck(final MineCICD plugin) {
-        this.plugin = plugin;
-        this.config = plugin.config().healthCheck();
-
+    public HealthCheckService() {
+        this.config = MineCICDApi.config().healthCheck();
     }
 
     public boolean enabled() {
-        return plugin.config().healthCheck().enabled();
+        return config.enabled();
     }
 
     public boolean runAfterRestart() {
-        return plugin.config().healthCheck().enabled() && plugin.config().healthCheck().runsAfterRestart();
+        return config.enabled() && config.runsAfterRestart();
     }
 
     public boolean runAfterAction() {
-        return plugin.config().healthCheck().enabled() && plugin.config().healthCheck().runInsideActions();
+        return config.enabled() && config.runInsideActions();
     }
 
     /**
@@ -56,17 +53,17 @@ public class HealthCheck {
         }
         if (config.script() != null) {
             try {
-                plugin.scriptManager().run(config.script(), null, line -> {
+                MineCICDApi.scriptService().run(config.script(), null, line -> {
                 });
             } catch (final ScriptException e) {
-                return Result.fail("health script '" + config.script() + "' failed: " + Messages.rootMessage(e));
+                return Result.fail("health script '" + config.script() + "' failed: " + Utils.rootMessage(e));
             } catch (final Exception e) {
-                return Result.fail("health script '" + config.script() + "' errored: " + Messages.rootMessage(e));
+                return Result.fail("health script '" + config.script() + "' errored: " + Utils.rootMessage(e));
             }
         }
 
         if (config.command() != null) {
-            Threads.marshaled(plugin, () -> plugin.getServer().dispatchCommand(
+            Threads.marshaled(() -> MineCICDApi.plugin().getServer().dispatchCommand(
                     org.bukkit.Bukkit.getConsoleSender(), config.command()));
         }
 
@@ -74,11 +71,11 @@ public class HealthCheck {
             if (name == null || name.isBlank()) {
                 continue;
             }
-            final org.bukkit.plugin.Plugin p = plugin.getServer().getPluginManager().getPlugin(name);
+            final org.bukkit.plugin.Plugin p = MineCICDApi.plugin().getServer().getPluginManager().getPlugin(name);
             if (p == null) {
                 return Result.fail("required plugin not found: " + name);
             }
-            if (!plugin.getServer().getPluginManager().isPluginEnabled(name)) {
+            if (!MineCICDApi.plugin().getServer().getPluginManager().isPluginEnabled(name)) {
                 return Result.fail("required plugin not loaded: " + name);
             }
         }

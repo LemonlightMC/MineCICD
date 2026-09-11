@@ -1,12 +1,13 @@
-package com.lemonlightmc.minecicd.messaging;
+package com.lemonlightmc.minecicd.services;
 
-import com.lemonlightmc.minecicd.MineCICD;
+import com.lemonlightmc.minecicd.api.MineCICDApi;
+import com.lemonlightmc.minecicd.data.Actor;
 import com.lemonlightmc.minecicd.util.Threads;
+import com.lemonlightmc.minecicd.util.Utils;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 
-import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 
@@ -17,13 +18,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
-public class Messages {
+public class MessageService {
 
-    private final MineCICD plugin;
     private YamlConfiguration config;
 
-    public Messages(final MineCICD plugin) {
-        this.plugin = plugin;
+    public MessageService() {
         load();
     }
 
@@ -37,15 +36,15 @@ public class Messages {
     }
 
     public void load() {
-        final File file = new File(plugin.getDataFolder(), "messages.yml");
+        final File file = new File(MineCICDApi.plugin().getDataFolder(), "messages.yml");
         boolean changed = false;
         if (!file.exists()) {
-            plugin.saveResource("messages.yml", false);
+            MineCICDApi.plugin().saveResource("messages.yml", false);
             changed = true;
         }
 
         config = YamlConfiguration.loadConfiguration(file);
-        try (InputStream in = plugin.getResource("messages.yml")) {
+        try (InputStream in = MineCICDApi.plugin().getResource("messages.yml")) {
             if (in == null) {
                 return;
             }
@@ -59,7 +58,7 @@ public class Messages {
                 }
             }
         } catch (final Exception e) {
-            plugin.getLogger().warning("Unable to read bundled messages.yml: " + e.getMessage());
+            MineCICDApi.logger().warning("Unable to read bundled messages.yml: " + e.getMessage());
         }
         changed |= migrateLegacyValues(file);
 
@@ -67,43 +66,43 @@ public class Messages {
             try {
                 config.save(file);
             } catch (final Exception e) {
-                plugin.getLogger().warning("Unable to save messages.yml: " + e.getMessage());
+                MineCICDApi.logger().warning("Unable to save messages.yml: " + e.getMessage());
             }
         }
     }
 
-    public void send(final CommandSender sender, final Component component) {
-        if (sender == null) {
+    public void send(final Actor actor, final Component component) {
+        if (actor == null) {
             return;
         }
-        Threads.marshaled(plugin, () -> sender.sendMessage(prefix().append(component)));
+        Threads.marshaled(() -> actor.sendMessage(prefix().append(component)));
     }
 
-    public void sendRaw(final CommandSender sender, final Component component) {
-        if (sender == null) {
+    public void sendRaw(final Actor actor, final Component component) {
+        if (actor == null) {
             return;
         }
-        Threads.marshaled(plugin, () -> sender.sendMessage(component));
+        Threads.marshaled(() -> actor.sendMessage(component));
     }
 
-    public void send(final CommandSender sender, final String path) {
-        send(sender, get(path, Map.of()));
+    public void send(final Actor actor, final String path) {
+        send(actor, get(path, Map.of()));
     }
 
-    public void send(final CommandSender sender, final String path, final Map<String, String> placeholders) {
-        send(sender, get(path, placeholders));
+    public void send(final Actor actor, final String path, final Map<String, String> placeholders) {
+        send(actor, get(path, placeholders));
     }
 
-    public void sendList(final CommandSender sender, final String path, final Map<String, String> placeholders) {
-        if (sender == null) {
+    public void sendList(final Actor actor, final String path, final Map<String, String> placeholders) {
+        if (actor == null) {
             return;
         }
-        Threads.marshaled(plugin, () -> {
-            sender.sendMessage(prefix());
+        Threads.marshaled(() -> {
+            actor.sendMessage(prefix());
             final List<String> raw = config.getStringList(path);
             final int len = raw.size();
             for (int i = 0; i < len; i++) {
-                sender.sendMessage(format(raw.get(i), placeholders));
+                actor.sendMessage(format(raw.get(i), placeholders));
             }
         });
     }
@@ -121,13 +120,6 @@ public class Messages {
         return config;
     }
 
-    public static String escape(final String raw) {
-        if (raw == null) {
-            return "";
-        }
-        return raw.replace("\\", "\\\\").replace("<", "\\<").replace(">", "\\>");
-    }
-
     private static Component format(String template, final Map<String, String> placeholders) {
         if (template == null || template.isEmpty()) {
             return Component.empty();
@@ -136,7 +128,7 @@ public class Messages {
             return MiniMessage.miniMessage().deserialize(template);
         }
         for (final Map.Entry<String, String> entry : placeholders.entrySet()) {
-            template = template.replace("{" + entry.getKey() + "}", escape(entry.getValue()));
+            template = template.replace("{" + entry.getKey() + "}", Utils.escape(entry.getValue()));
         }
         return MiniMessage.miniMessage().deserialize(template);
     }
@@ -186,7 +178,7 @@ public class Messages {
                 // hex color &#rrggbb
                 if (i + 8 <= input.length()) {
                     final String hex = input.substring(i + 2, i + 8);
-                    if (isHexColor(hex)) {
+                    if (Utils.isHexColor(hex)) {
                         sb.append("<color:#").append(hex).append(">");
                         i += 8;
                         continue;
@@ -196,14 +188,14 @@ public class Messages {
                 i++;
                 continue;
             }
-            final String tag = legacyCode(code);
+            final String tag = Utils.legacyCode(code);
             if (tag != null) {
                 if (code == 'x') {
                     final StringBuilder hex = new StringBuilder("#");
                     int j = i + 2;
                     boolean valid = true;
                     while (j + 2 <= input.length() && hex.length() < 7) {
-                        if (input.charAt(j) == '&' && isHex(input.charAt(j + 1))) {
+                        if (input.charAt(j) == '&' && Utils.isHex(input.charAt(j + 1))) {
                             hex.append(input.charAt(j + 1));
                             j += 2;
                         } else {
@@ -230,49 +222,4 @@ public class Messages {
         }
         return sb.toString();
     }
-
-    private static boolean isHexColor(final String s) {
-        if (s.length() != 6) {
-            return false;
-        }
-        for (int i = 0; i < 6; i++) {
-            if (!isHex(s.charAt(i))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static boolean isHex(final char c) {
-        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
-    }
-
-    private static String legacyCode(final char code) {
-        return switch (code) {
-            case '0' -> "<black>";
-            case '1' -> "<dark_blue>";
-            case '2' -> "<dark_green>";
-            case '3' -> "<dark_aqua>";
-            case '4' -> "<dark_red>";
-            case '5' -> "<dark_purple>";
-            case '6' -> "<gold>";
-            case '7' -> "<gray>";
-            case '8' -> "<dark_gray>";
-            case '9' -> "<blue>";
-            case 'a' -> "<green>";
-            case 'b' -> "<aqua>";
-            case 'c' -> "<red>";
-            case 'd' -> "<light_purple>";
-            case 'e' -> "<yellow>";
-            case 'f' -> "<white>";
-            case 'k' -> "<obfuscated>";
-            case 'l' -> "<bold>";
-            case 'm' -> "<strikethrough>";
-            case 'n' -> "<underlined>";
-            case 'o' -> "<italic>";
-            case 'r' -> "<reset>";
-            default -> null;
-        };
-    }
-
 }

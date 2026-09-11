@@ -7,7 +7,7 @@ import java.util.concurrent.ThreadFactory;
 
 import org.bukkit.Bukkit;
 
-import com.lemonlightmc.minecicd.MineCICD;
+import com.lemonlightmc.minecicd.api.MineCICDApi;
 
 public final class Threads {
 
@@ -34,11 +34,11 @@ public final class Threads {
         return Executors.newSingleThreadScheduledExecutor(daemonFactory(name));
     }
 
-    public static void marshaled(final MineCICD plugin, final Runnable runnable) {
+    public static void marshaled(final Runnable runnable) {
         if (Bukkit.isPrimaryThread()) {
             runnable.run();
         } else {
-            plugin.getServer().getScheduler().runTask(plugin, runnable);
+            MineCICDApi.plugin().getServer().getScheduler().runTask(MineCICDApi.plugin(), runnable);
         }
     }
 }

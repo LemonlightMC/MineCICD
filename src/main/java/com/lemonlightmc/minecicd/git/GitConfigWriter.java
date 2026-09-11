@@ -1,15 +1,14 @@
-package com.lemonlightmc.minecicd.secrets;
+package com.lemonlightmc.minecicd.git;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.List;
 
-import com.lemonlightmc.minecicd.MineCICD;
-import com.lemonlightmc.minecicd.secrets.SecretManager.SecretFileEntry;
+import com.lemonlightmc.minecicd.api.MineCICDApi;
+import com.lemonlightmc.minecicd.services.SecretFilterService;
+import com.lemonlightmc.minecicd.services.SecretFilterService.SecretFileEntry;
 
 public class GitConfigWriter {
   private static final String ATTR_FILE = ".gitattributes";
@@ -18,13 +17,12 @@ public class GitConfigWriter {
   private static final String LINE_SEP = System.lineSeparator();
   private static final String FILTERS_BEGIN = "# MineCICD FILTERS BEGIN";
   private static final String FILTERS_END = "# MineCICD FILTERS END";
-  private static final String FILTER_NAME = "minecicd";
 
   // writes the secrets.yml file entries to .gitattributes and .git/config,
   // replacing any previous MineCICD-managed blocks
   // "<escaped-file> filter=minecicd-<hex>"" per file
-  protected static void writeAttributes(final MineCICD plugin, final List<SecretFileEntry> files) {
-    final Path attributes = plugin.serverRoot().resolve(ATTR_FILE);
+  public static void writeAttributes(final List<SecretFileEntry> files) {
+    final Path attributes = MineCICDApi.serverRoot().resolve(ATTR_FILE);
     try {
       final StringBuilder builder = new StringBuilder();
       // Remove any MineCICD block already written (and any lone marker
@@ -53,12 +51,12 @@ public class GitConfigWriter {
       // write to file
       Files.write(attributes, builder.toString().getBytes(StandardCharsets.UTF_8));
     } catch (final IOException e) {
-      plugin.getLogger().warning("Unable to write " + ATTR_FILE + ": " + e.getMessage());
+      MineCICDApi.logger().warning("Unable to write " + ATTR_FILE + ": " + e.getMessage());
     }
   }
 
-  protected static void writeGitConfig(final MineCICD plugin, final List<SecretFileEntry> files) {
-    final Path gitDir = plugin.serverRoot().resolve(GIT_DIR);
+  public static void writeGitConfig(final List<SecretFileEntry> files) {
+    final Path gitDir = MineCICDApi.serverRoot().resolve(GIT_DIR);
     if (!Files.isDirectory(gitDir)) {
       return;
     }
@@ -97,7 +95,7 @@ public class GitConfigWriter {
       // write to file
       Files.write(config, builder.toString().getBytes(StandardCharsets.UTF_8));
     } catch (final IOException e) {
-      plugin.getLogger().warning("Unable to write " + CONFIG_FILE + "filters: " + e.getMessage());
+      MineCICDApi.logger().warning("Unable to write " + CONFIG_FILE + "filters: " + e.getMessage());
     }
   }
 
@@ -191,8 +189,8 @@ public class GitConfigWriter {
   }
 
   private static boolean isMineCicdSectionHeader(final String trimmed) {
-    return trimmed.startsWith("[filter \"" + FILTER_NAME + "\"]")
-        || trimmed.startsWith("[filter \"" + FILTER_NAME + "-");
+    return trimmed.startsWith("[filter \"" + SecretFilterService.FILTER_NAME + "\"]")
+        || trimmed.startsWith("[filter \"" + SecretFilterService.FILTER_NAME + "-");
   }
 
   /**
@@ -208,23 +206,4 @@ public class GitConfigWriter {
     return file.replace("\\", "\\\\").replace("\"", "\\\"");
   }
 
-  /**
-   * Deterministic, per-file filter driver name ({@code minecicd-<hex>} from
-   * SHA-256 of the normalized path). The names are stable across restarts and
-   * use only {@code [0-9a-f]}, which is safe in gitattributes attribute values.
-   */
-  protected static String filterNameFor(final String file) {
-    try {
-      final MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      final byte[] hash = digest.digest(file.getBytes(StandardCharsets.UTF_8));
-      final StringBuilder hex = new StringBuilder(16);
-      for (int i = 0; i < 8; i++) {
-        hex.append(String.format("%02x", hash[i]));
-      }
-      return FILTER_NAME + "-" + hex;
-    } catch (final NoSuchAlgorithmException e) {
-      // SHA-256 is mandated by the JCA specification.
-      throw new IllegalStateException("SHA-256 not available", e);
-    }
-  }
 }
