@@ -552,13 +552,13 @@ public class CicdService implements ICicdService {
     }
 
     @Override
-    public CompletableFuture<Boolean> add(Actor actor, List<Path> path) {
+    public CompletableFuture<Boolean> add(final Actor actor, final List<Path> path) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'add'");
     }
 
     @Override
-    public CompletableFuture<Boolean> remove(Actor actor, List<Path> path) {
+    public CompletableFuture<Boolean> remove(final Actor actor, final List<Path> path) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'remove'");
     }

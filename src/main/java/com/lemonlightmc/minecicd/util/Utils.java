@@ -2,8 +2,12 @@ package com.lemonlightmc.minecicd.util;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.UUID;
+import java.util.regex.Pattern;
 
 public class Utils {
+  private static final Pattern REQUEST_ID = Pattern.compile("[A-Za-z0-9_.-]{1,64}");
+
   public static String rootMessage(final Throwable t) {
     Throwable current = t;
     while (current.getCause() != null) {
@@ -22,6 +26,14 @@ public class Utils {
 
   public static String nullToEmpty(final String value) {
     return value == null ? "" : value;
+  }
+
+  public static String newRequestId() {
+    return UUID.randomUUID().toString();
+  }
+
+  public static boolean isValidRequestId(final String id) {
+    return id != null && REQUEST_ID.matcher(id).matches();
   }
 
   public static String hex(final byte[] bytes) {

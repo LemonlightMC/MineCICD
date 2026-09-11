@@ -5,8 +5,8 @@ import com.lemonlightmc.minecicd.api.MineCICDApi;
 import com.lemonlightmc.minecicd.git.CommitActions;
 import com.lemonlightmc.minecicd.git.CommitActions.CommitAction;
 import com.lemonlightmc.minecicd.exceptions.ParseException;
-import com.lemonlightmc.minecicd.util.Ids;
 import com.lemonlightmc.minecicd.util.Threads;
+import com.lemonlightmc.minecicd.util.Utils;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -68,7 +68,7 @@ public class ControlServer {
     private HttpServer server;
     private ExecutorService httpExecutor;
     private ScheduledExecutorService failurePurger;
-    private ControlSecurity security;
+    private final ControlSecurity security;
 
     public ControlServer(final Control config) {
         this.host = config.host() == null || config.host().isBlank() ? "0.0.0.0" : config.host();
@@ -254,7 +254,7 @@ public class ControlServer {
 
     private boolean postprocess(final HttpExchange exchange, final String reqeustId, final byte[] body) {
         // validate request id
-        if (!Ids.isValidRequestId(reqeustId)) {
+        if (!Utils.isValidRequestId(reqeustId)) {
             respond(exchange, 400, "{\"error\":\"Invalid requestId\"}");
             return false;
         }
@@ -391,7 +391,7 @@ public class ControlServer {
                 respond(exchange, 403, "{\"error\":\"" + jsonEscape(e.getMessage()) + "\"}");
                 return;
             }
-            final String requestId = Ids.newRequestId();
+            final String requestId = Utils.newRequestId();
             if (!MineCICDApi.handler().tryAcquireInFlight(requestId)) {
                 respond(exchange, 409, "{\"error\":\"Another request is already in flight\"}");
                 return;

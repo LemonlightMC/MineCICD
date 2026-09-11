@@ -13,7 +13,7 @@ public interface ICicdService {
 
     CompletableFuture<Boolean> deinit(Actor actor);
 
-    default CompletableFuture<Boolean> pull(Actor actor) {
+    default CompletableFuture<Boolean> pull(final Actor actor) {
         return pull(actor, false);
     }
 

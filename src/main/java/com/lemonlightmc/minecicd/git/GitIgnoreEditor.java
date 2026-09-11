@@ -51,7 +51,7 @@ public class GitIgnoreEditor {
             return trackAll();
         }
         final List<String> lines = lines();
-        int begin = lines.indexOf(BEGIN_MARKER);
+        final int begin = lines.indexOf(BEGIN_MARKER);
         int end = begin < 0 ? -1 : lines.indexOf(END_MARKER);
         if (begin < 0 || end < begin) {
             insertManaged(lines, whitelistEntry(path));
@@ -181,7 +181,8 @@ public class GitIgnoreEditor {
         return true;
     }
 
-    private boolean containsWhitelist(final List<String> lines, final int begin, final int end, final String canonical) {
+    private boolean containsWhitelist(final List<String> lines, final int begin, final int end,
+            final String canonical) {
         for (int i = begin + 1; i < end; i++) {
             final String line = lines.get(i).trim();
             if (isWhitelist(line) && canonicalOf(line).equals(canonical)) {

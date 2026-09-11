@@ -52,7 +52,7 @@ public interface Actor {
     return new WebhookActor();
   }
 
-  public static Actor fromString(String key) {
+  public static Actor fromString(final String key) {
     if (key == null || key.isBlank()) {
       return fromConsole();
     }

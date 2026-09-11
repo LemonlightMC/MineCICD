@@ -97,7 +97,7 @@ public class MineCICDConfig {
     public record HealthCheck(boolean enabled, boolean runInsideActions, boolean runsAfterRestart, int timeoutSeconds,
             String command, String script, List<String> requirePlugins, AutoRollbackConfig autoRollback) {
 
-        public static HealthCheck from(ConfigurationSection section) {
+        public static HealthCheck from(final ConfigurationSection section) {
             final ConfigurationSection autoRollback = section.getConfigurationSection("auto-rollback");
             String command = section.getString("command", "");
             if (command != null) {
