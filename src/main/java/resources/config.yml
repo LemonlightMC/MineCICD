@@ -112,10 +112,15 @@ control:
 # Format: 3.x.x -> 30000
 version: 30001
 
-# Audit log: append-only JSONL record of every command / deploy and its outcome.
+# Audit log: append-only plain-text record of every command / deploy and its
+# outcome. A single audit.log is used; a new file is started on each server
+# restart (except restarts scheduled by this plugin).
 audit:
   enabled: true
-  # Audit files older than this many days are trimmed on boot.
+  # Number of audit log files to keep, including the active one. Once this
+  # count is exceeded the oldest files are cleaned up.
+  max-files: 10
+  # Days of per-day analytics to retain for /minecicd analytics.
   max-age-days: 90
 
 # Discord webhook notifications for deploy lifecycle events (outbound only).

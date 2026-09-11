@@ -5,6 +5,8 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
+import com.lemonlightmc.minecicd.services.AuditLogger.Source;
+
 /**
  * Deployment lifecycle event bus. Emitters publish {@link Event}s; consumers
  * (audit log, analytics, Discord notifier) subscribe. Listeners run on the
@@ -24,16 +26,19 @@ public final class DeploymentEvents {
     }
 
     /**
-     * @param type           the event type
+     * @param type            the event type
      * @param timestampMillis epoch millis when the event happened
-     * @param actor          human/identity responsible (player name, "scheduler", "webhook", ...)
-     * @param source         trigger class: "manual", "control-api", "scheduler", "webhook", "health", "rollback"
-     * @param message        human-readable detail (already secret-redacted)
-     * @param requestId      control request id, or null
-     * @param branch         git branch, or null
-     * @param durationMillis duration of the deploy, or 0 when unknown
+     * @param actor           human/identity responsible (player name, "scheduler",
+     *                        "webhook", ...)
+     * @param source          trigger class: "manual", "control-api", "scheduler",
+     *                        "webhook", "health", "rollback"
+     * @param message         human-readable detail (already secret-redacted)
+     * @param requestId       control request id, or null
+     * @param branch          git branch, or null
+     * @param durationMillis  duration of the deploy, or 0 when unknown
      */
-    public record Event(Type type, long timestampMillis, String actor, String source, String message,
+    public record Event(Type type, long timestampMillis, String actor,
+            Source source, String message,
             String requestId, String branch, long durationMillis) {
         public Map<String, String> meta() {
             return Map.of();
@@ -46,11 +51,11 @@ public final class DeploymentEvents {
         listeners.add(listener);
     }
 
-    public void emit(final Type type, final String actor, final String source, final String message) {
+    public void emit(final Type type, final String actor, final Source source, final String message) {
         emit(new Event(type, System.currentTimeMillis(), actor, source, message, null, null, 0L));
     }
 
-    public void emit(final Type type, final String actor, final String source, final String message,
+    public void emit(final Type type, final String actor, final Source source, final String message,
             final String requestId, final String branch, final long durationMillis) {
         emit(new Event(type, System.currentTimeMillis(), actor, source, message, requestId, branch, durationMillis));
     }

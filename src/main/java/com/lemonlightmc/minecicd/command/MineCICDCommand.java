@@ -288,8 +288,8 @@ public class MineCICDCommand {
             for (final AuditLogger.Entry entry : entries) {
                 messages.sendRaw(sender, messages.get("audit-line", Map.of(
                         "when", entry.iso(), "actor", Messages.escape(entry.actor()),
-                        "source", Messages.escape(entry.source()),
-                        "action", Messages.escape(entry.action()),
+                        "source", Messages.escape(entry.source().toString()),
+                        "action", Messages.escape(entry.action().toString()),
                         "outcome", Messages.escape(entry.outcome()),
                         "detail", Messages.escape(entry.message()))));
             }

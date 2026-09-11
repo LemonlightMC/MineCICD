@@ -172,7 +172,7 @@ Small in-process event bus. Emitters publish `DEPLOY_STARTED / DEPLOY_COMPLETED 
 
 ### audit/AuditLogger
 
-Append-only JSONL log under `plugins/MineCICD/audit/YYYY-MM-DD.jsonl`. One JSON object per line (actor, source, action, outcome, message, requestId, branch). Secret values (`git.pass`, webhook/control secrets) are redacted before write. Supports paged reads for `/minecicd audit` and age-based trimming.
+Append-only plain-text log under `plugins/MineCICD/audit/audit.log`. One text line per entry (actor, source, action, outcome, message, requestId, branch). Secret values (`git.pass`, webhook/control secrets) are redacted before write. A single active file is used; on each server restart it is rotated and a fresh one started (except restarts scheduled by this plugin, which keep the current file). Files are pruned to `audit.max-files` newest files. Supports paged reads for `/minecicd audit`.
 
 ### analytics/Analytics
 

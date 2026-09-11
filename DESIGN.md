@@ -241,7 +241,7 @@ control:
     actions: [pull]               # actions to enqueue on a push to the configured branch
   rate-limit: { enabled: true, failures-only: true, failure-limit: 5, max-entries: 1000, window-seconds: 15 }
 version: 30001
-audit: { enabled: true, max-age-days: 90 }                     # JSONL audit log under plugins/MineCICD/audit/
+audit: { enabled: true, max-files: 10, max-age-days: 90 }       # plain-text audit log under plugins/MineCICD/audit/
 notifications:
   discord:
     enabled: false

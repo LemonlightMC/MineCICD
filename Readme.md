@@ -139,8 +139,8 @@ health-check:
   require-plugins: []           # plugin names that must be loaded after the deploy
   auto-rollback: { enabled: true, restart-after: false }
 
-# Audit log (JSONL) and deployment analytics (per-day summaries)
-audit: { enabled: true, max-age-days: 90 }
+# Audit log and deployment analytics (per-day summaries)
+audit: { enabled: true, max-files: 10, max-age-days: 90 }
 notifications:
   discord:
     enabled: false

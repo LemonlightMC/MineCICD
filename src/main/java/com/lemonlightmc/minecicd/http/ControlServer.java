@@ -4,6 +4,8 @@ import com.lemonlightmc.minecicd.MineCICD;
 import com.lemonlightmc.minecicd.MineCICDConfig.Control;
 import com.lemonlightmc.minecicd.git.CommitActions;
 import com.lemonlightmc.minecicd.git.CommitActions.Action;
+import com.lemonlightmc.minecicd.services.AuditLogger.AuditAction;
+import com.lemonlightmc.minecicd.services.AuditLogger.Source;
 import com.lemonlightmc.minecicd.exceptions.ParseException;
 import com.lemonlightmc.minecicd.util.Ids;
 import com.lemonlightmc.minecicd.util.Threads;
@@ -36,7 +38,7 @@ import org.json.JSONObject;
 public class ControlServer {
 
     public interface Delegate {
-        void acceptRequest(String requestId, List<Action> actions, String branch, String source);
+        void acceptRequest(String requestId, List<Action> actions, String branch, Source source);
 
         ProgressStream progressStream(String requestId);
 
@@ -308,7 +310,7 @@ public class ControlServer {
                 respond(exchange, 409, "{\"error\":\"Another request is already in flight\"}");
                 return;
             }
-            plugin.cicdService().acceptRequest(request.requestId(), request.actions(), branch, "control-api");
+            plugin.cicdService().acceptRequest(request.requestId(), request.actions(), branch, Source.CONTROL_API);
             respond(exchange, 202, "{\"accepted\":true,\"requestId\":\"" + jsonEscape(request.requestId()) + "\"}");
 
         } catch (final Exception e) {
@@ -395,7 +397,7 @@ public class ControlServer {
                 respond(exchange, 409, "{\"error\":\"Another request is already in flight\"}");
                 return;
             }
-            plugin.cicdService().acceptRequest(requestId, githubWebhookActions, branch, "webhook");
+            plugin.cicdService().acceptRequest(requestId, githubWebhookActions, branch, Source.WEBHOOK);
             respond(exchange, 202,
                     "{\"accepted\":true,\"requestId\":\"" + jsonEscape(requestId) + "\",\"branch\":\""
                             + jsonEscape(branch) + "\"}");
